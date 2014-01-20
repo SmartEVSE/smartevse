@@ -61,8 +61,8 @@ double Irms[NR_CTS];
 unsigned int lastSampleI,sampleI;   //sample_ holds the raw analog read value, lastSample_ holds the last sample
 double lastFilteredI, filteredI;	//Filtered_ is the raw analog value minus the DC offset
 
-unsigned int sampleI_CT[NR_CTS];
-double filteredI_CT[NR_CTS];
+unsigned int sampleI_CT[NR_CTS]={0,0,0};
+double filteredI_CT[NR_CTS]={0,0,0};
 
 
 
@@ -218,10 +218,10 @@ void init(void)
 	ANSEL = 0b11110000;		// RC0, RC1, RC2, RC3 are analog inputs (pin 16,15,14,7)
 	ANSELH = 0;				// All digital IO
 	TRISA = 0b00100000;		// Set UART RX as input
-	PORTB = 0;
-	TRISB = 0b00000000;		// all outputs
 	PORTC = 0;
 	TRISC = 0b00001111;		// RC0-RC3 analog inputs
+	PORTB = 0;
+	TRISB = 0b00000000;		// all outputs
 
 
 
