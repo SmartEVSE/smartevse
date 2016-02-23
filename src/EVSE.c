@@ -5,8 +5,11 @@
 ;    Changes:
 ;    1.00  Initial release
 ;    1.01  Added Normal EVSE mode + Cable Lock support
+;    1.02  Changed Max Capacity to 16A for 2,5mm2 cables
+;    1.03  Changed Max Charge current range to 10-80A, also changed LCD delay to 2ms
+;    1.04  Changed menu so that only relevant options are shown. Added option for fixed cable installations. (no Cable Lock, override PP pin)
 ;
-;    (C) 2013  Michael Stegen / Stegen Electronics
+;    (C) 2013-2015  Michael Stegen / Stegen Electronics
 ;
 ; Permission is hereby granted, free of charge, to any person obtaining a copy
 ; of this software and associated documentation files (the "Software"), to deal
@@ -56,11 +59,14 @@ unsigned int CalcCurrent();
 #pragma	config EBTRB = OFF
 
 #define ICAL 3.00						// Irms Calibration value (for Current transformers) 
-#define MAX_MAINS 13					// max Current the Mains connection can supply
+#define MAX_MAINS 25					// max Current the Mains connection can supply
 #define MAX_CURRENT 13					// max charging Current for the EV
 #define MIN_CURRENT 6					// minimum Current the EV will accept
 #define MODE 0							// Normal EVSE mode
 #define LOCK 0							// No Cable lock
+#define CABLE_LIMIT 13					// Manual set Cable Limit (for use with Fixed Cable)
+#define CONFIG 0						// Configuration: 0= TYPE 2 socket, 1= Fixed Cable
+
 
 #define GOODFCS16 0x0f47				// crc16 frame check value
 
@@ -96,6 +102,8 @@ rom unsigned int EE_MinCurrent = MIN_CURRENT;
 rom double EE_ICal = ICAL;
 rom char EE_Mode = MODE;
 rom char EE_Lock = LOCK;
+rom unsigned int EE_CableLimit = CABLE_LIMIT;
+rom char EE_Config = CONFIG;
 #pragma romdata
 
 
@@ -113,7 +121,10 @@ unsigned int MinCurrent;			// Minimal current the EV is happy with
 double ICal;						// CT calibration value
 char Mode;							// EVSE mode
 char Lock;							// Cable lock enable/disable
-// total 12 bytes
+unsigned int CableLimit;			// Fixed Cable Current limit (only used when config is set to Fixed Cable)
+char Config;						// Configuration (Fixed Cable or Type 2 Socket)
+
+// total 15 bytes
 
 double Irms[4]={0,0,0,0};			// Momentary current per Phase (Amps *10) (23= 2.3A)
 									// Max 4 phases supported
@@ -123,7 +134,7 @@ unsigned char State = STATE_A;
 unsigned char Error = NO_ERROR;
 unsigned char NextState;
 
-unsigned int MaxCapacity;			// Cable limit (Amps)(limited by the wire in the charge cable, set automatically)
+unsigned int MaxCapacity;			// Cable limit (Amps)(limited by the wire in the charge cable, set automatically, or manually if Config=Fixed Cable)
 unsigned int Ilimit;				// Max current (Amps *10), depending on MaxCapacity and MaxMains
 unsigned int Imeasured=0;			// Max of all CT inputs (Amps *10)
 unsigned int Iset;					// PWM output is set to this current level (Amps *10)
@@ -302,7 +313,7 @@ void read_settings(void)
     pBytes = (char*)&MaxMains;
 	EECON1 = 0; 					// select EEprom
 	EEADR = 0;
-  	for (x=0; x<12;x++)				// 12 bytes
+  	for (x=0; x<15;x++)				// 15 bytes
     {
     	EECON1bits.RD = 1;
     	*pBytes++ = EEDATA;
@@ -322,7 +333,7 @@ void write_settings(void)
     INTCONbits.GIE=0; 			// Disable interrupts
 
 	
-	for (x=0;x<12;x++)				// 12 bytes
+	for (x=0;x<15;x++)				// 15 bytes
     {
 	    EEADR = x;
 	    EECON1 = 0; 				//ensure CFGS=0 and EEPGD=0
@@ -377,9 +388,11 @@ void ProximityPin(void)
 	while(ADCON0bits.GO);
 
 	MaxCapacity=13;										// Max cable current = 13A
-	if ((ADRES > 394) && (ADRES < 434))	MaxCapacity=20; // Max cable current = 20A
+	if ((ADRES > 394) && (ADRES < 434))	MaxCapacity=16; // Max cable current = 16A
 	if ((ADRES > 175) && (ADRES < 193)) MaxCapacity=32;	// Max cable current = 32A
 	if ((ADRES > 88) && (ADRES < 98)) MaxCapacity=63;	// Max cable current = 63A
+
+	if (Config) MaxCapacity = CableLimit;				// Override when Fixed Cable is used.  
 
 	ADCON0 = 0b00000001;					// ADC input AN0 (Pilot)
 	ADCON2 = 0b10000101;					// Right justify, Tacq = 0 uS, FOSC/16
@@ -415,6 +428,7 @@ unsigned int CalcCurrent()					// calculates PWM current (Amps x10)
 //------------------------------------------------
 // Smart EVSE
 // -- Main menu --
+// CONFIG- Set to Fixed Cable or Type 2 Socket
 // MODE  - Set to Smart mode, or Normal EVSE mode
 // MAINS - Set max MAINS Current (25-100)
 // MAX   - Set MAX Charge Current for the EV (16-80)
@@ -431,17 +445,19 @@ void RS232cli(void)
 	printf((const far rom char *)"\r\n");
 	if (menu==0)		// menu = Main Menu
 	{
-		if (strcmppgm2ram(U2buffer,(const far rom char *)"MAINS") == 0) menu=1;		// Switch to Set Max Mains Capacity
-		if (strcmppgm2ram(U2buffer,(const far rom char *)"MAX") == 0) menu=2;		// Switch to Set Max Current
-		if (strcmppgm2ram(U2buffer,(const far rom char *)"MIN") == 0) menu=3;		// Switch to Set Min Current
-		if (strcmppgm2ram(U2buffer,(const far rom char *)"CAL") == 0) menu=4;		// Switch to Calibrate CT1
-		if (strcmppgm2ram(U2buffer,(const far rom char *)"MODE") == 0) menu=5;		// Switch to Normal or Smart mode
-		if (strcmppgm2ram(U2buffer,(const far rom char *)"LOCK") == 0) menu=6;		// Switch to Enable/Disable Cable Lock
+		if ((strcmppgm2ram(U2buffer,(const far rom char *)"MAINS") == 0) && Mode) menu=1;		// Switch to Set Max Mains Capacity (Smart mode)
+		if (strcmppgm2ram(U2buffer,(const far rom char *)"MAX") == 0) menu=2;					// Switch to Set Max Current
+		if ((strcmppgm2ram(U2buffer,(const far rom char *)"MIN") == 0) && Mode) menu=3;			// Switch to Set Min Current (Smart mode)
+		if ((strcmppgm2ram(U2buffer,(const far rom char *)"CAL") == 0) && Mode) menu=4;			// Switch to Calibrate CT1 (Smart mode)
+		if (strcmppgm2ram(U2buffer,(const far rom char *)"MODE") == 0) menu=5;					// Switch to Normal or Smart mode
+		if ((strcmppgm2ram(U2buffer,(const far rom char *)"LOCK") == 0) && !Config) menu=6;		// Switch to Enable/Disable Cable Lock (Config=Socket)
+		if (strcmppgm2ram(U2buffer,(const far rom char *)"CONFIG") == 0) menu=7;				// Switch to Fixed cable or Type 2 Socket
+		if ((strcmppgm2ram(U2buffer,(const far rom char *)"CABLE") == 0) && Config) menu=8;		// Switch to Set fixed Cable Current limit (Config=Fixed)
 	}
 	else if (U2buffer[0]==0) menu=0;
 	else							// menu = 1,2,3,4 read entered value from cli
 	{		
-		if (menu==1 || menu==2 || menu==3)
+		if (menu==1 || menu==2 || menu==3 || menu==8)
 		{
 			n=(unsigned int)atob(U2buffer);
 			if ((menu==1) && (n>24) && (n<101))
@@ -450,7 +466,7 @@ void RS232cli(void)
 				Ilimit=MaxMains*10;				// Update Ilimit
 				write_settings();				// Write to eeprom
 			}
-			else if ((menu==2) && (n>15) && (n<81))
+			else if ((menu==2) && (n>9) && (n<81))
 			{
 				MaxCurrent=n;					// Set new MaxCurrent
 				write_settings();				// Write to eeprom
@@ -458,6 +474,11 @@ void RS232cli(void)
 			else if ((menu==3) && (n>5) && (n<17))
 			{
 				MinCurrent=n;					// Set new MinCurrent
+				write_settings();				// Write to eeprom
+			}
+			else if ((menu==8) && (n>12) && (n<81))
+			{
+				CableLimit=n;					// Set new CableLimit
 				write_settings();				// Write to eeprom
 			}
 			else printf((const far rom char *)"\r\nError! please check limits\r\n");
@@ -473,7 +494,7 @@ void RS232cli(void)
 				write_settings();				// Write to eeprom
 			}
 		}
-		else if (menu==5)
+		else if (menu==5)					// EVSE Mode
 		{
 			if (strcmppgm2ram(U2buffer,(const far rom char *)"SMART") == 0)
 			{
@@ -484,10 +505,11 @@ void RS232cli(void)
 			{
 				Mode = 0;
 				write_settings();				// Write to eeprom
+				Error=NO_ERROR;					// Clear Errors
 			}
 			
 		}
-		else if (menu==6)
+		else if (menu==6)					// Cable Lock
 		{
 			if (strcmppgm2ram(U2buffer,(const far rom char *)"ENABLE") == 0)
 			{
@@ -500,6 +522,20 @@ void RS232cli(void)
 				write_settings();				// Write to eeprom
 			}
 		}
+		else if (menu==7)					// Configuration Mode
+		{
+			if (strcmppgm2ram(U2buffer,(const far rom char *)"FIXED") == 0)
+			{
+				Config = 1;
+				write_settings();				// Write to eeprom
+			}
+			else if (strcmppgm2ram(U2buffer,(const far rom char *)"SOCKET") == 0)
+			{
+				Config = 0;
+				write_settings();				// Write to eeprom
+			}
+		}
+
 
 		menu=0;
 	}
@@ -508,20 +544,28 @@ void RS232cli(void)
 	if (menu==0)
 	{
 		printf((const far rom char *)"\r\n---------------------- SMART EVSE  ----------------------\r\n");
-		printf((const far rom char *)" v1.01  for detailed instructions, see www.smartevse.org\r\n");
+		printf((const far rom char *)" v1.04  for detailed instructions, see www.smartevse.org\r\n");
 		printf((const far rom char *)" Internal Temperature: %2u C\r\n",TempEVSE);
 		printf((const far rom char *)"---------------------------------------------------------\r\n");
-		printf((const far rom char *)"MODE  - Set to Smart mode, or Normal EVSE mode    (");
-		if (Mode) printf((const far rom char *)"SMART)\r\n");
-		else printf((const far rom char *)"NORMAL)\r\n");
-		printf((const far rom char *)"MAINS - Set Max MAINS Current                     (%3u A)\r\n",MaxMains);
-		printf((const far rom char *)"MAX   - Set MAX Charge Current for the EV         ( %2u A)\r\n",MaxCurrent);
-		printf((const far rom char *)"MIN   - Set MIN Charge Current the EV will accept ( %2u A)\r\n",MinCurrent);
-		printf((const far rom char *)"LOCK  - Cable lock Enable/Disable                 (");
-		if (Lock) printf((const far rom char *)"ENABLE)\r\n");
-		else printf((const far rom char *)"DISABLE)\r\n");
-		printf((const far rom char *)"CAL   - Calibrate CT1  (CT1:%3u.%01uA CT2:%3u.%01uA CT3:%3u.%01uA)\r\n>",(unsigned int)Irms[0]/10, (unsigned int)Irms[0]%10, (unsigned int)Irms[1]/10, (unsigned int)Irms[1]%10, (unsigned int)Irms[2]/10, (unsigned int)Irms[2]%10);
-
+		printf((const far rom char *)"CONFIG - Set to Fixed Cable or Type 2 Socket       (");
+		if (Config) printf((const far rom char *)"Fixed Cable)\r\n");
+		else printf((const far rom char *)"Type 2 Socket)\r\n");
+		printf((const far rom char *)"MODE   - Set to Smart mode or Normal EVSE mode     (");
+		if (Mode) printf((const far rom char *)"Smart)\r\n");
+		else printf((const far rom char *)"Normal)\r\n");
+		if (Mode) printf((const far rom char *)"MAINS  - Set Max MAINS Current (Smart mode)        (%3u A)\r\n",MaxMains);
+		printf((const far rom char *)"MAX    - Set MAX Charge Current for the EV         ( %2u A)\r\n",MaxCurrent);
+		if (Mode) printf((const far rom char *)"MIN    - Set MIN Charge Current the EV will accept ( %2u A)\r\n",MinCurrent);
+		if (Config)
+		{
+			printf((const far rom char *)"CABLE  - Set Fixed Cable Current limit             ( %2u A)\r\n",CableLimit);
+		} else {
+			printf((const far rom char *)"LOCK   - Cable lock Enable/Disable                 (");
+			if (Lock) printf((const far rom char *)"Enabled)\r\n");
+			else printf((const far rom char *)"Disabled)\r\n");
+		}
+		if (Mode) printf((const far rom char *)"CAL    - Calibrate CT1  (CT1:%3u.%01uA CT2:%3u.%01uA CT3:%3u.%01uA)\r\n",(unsigned int)Irms[0]/10, (unsigned int)Irms[0]%10, (unsigned int)Irms[1]/10, (unsigned int)Irms[1]%10, (unsigned int)Irms[2]/10, (unsigned int)Irms[2]%10);
+		printf((const far rom char *)">");
 	}
 	else if (menu==1) 
 	{
@@ -533,7 +577,7 @@ void RS232cli(void)
 	{
 		printf((const far rom char *)"WARNING - DO NOT SET CURRENT HIGHER THAN YOUR CIRCUIT BREAKER\r\n"); 
         printf((const far rom char *)"OR GREATER THAN THE RATED VALUE OF THE EVSE\r\n");
-		printf((const far rom char *)"MAX Current set to: %u A\r\nEnter new MAX Charge Current (16-80): ",MaxCurrent);
+		printf((const far rom char *)"MAX Current set to: %u A\r\nEnter new MAX Charge Current (10-80): ",MaxCurrent);
 	}
 
 	else if (menu==3)
@@ -558,6 +602,20 @@ void RS232cli(void)
 		else printf((const far rom char *)"Disabled\r\n");
 		printf((const far rom char *)"Enter new Cable lock mode (ENABLE/DISABLE): ");
 	}
+	else if (menu==7)
+	{
+		printf((const far rom char *)"Configuration : ");
+		if (Config) printf((const far rom char *)"Fixed Cable\r\n");
+		else printf((const far rom char *)"Type 2 Socket\r\n");
+		printf((const far rom char *)"Enter new Configuration (FIXED/SOCKET): ");
+	}
+	else if (menu==8)
+	{
+		printf((const far rom char *)"WARNING - DO NOT SET CURRENT HIGHER THAN YOUR CIRCUIT BREAKER\r\n"); 
+        printf((const far rom char *)"OR GREATER THAN THE RATED VALUE OF THE CHARGING CABLE\r\n");
+		printf((const far rom char *)"Fixed Cable Current limit set to: %u A\r\nEnter new limit (13-80): ",CableLimit);
+	}
+
 
 
 	ISR2FLAG=0;				// clear flag
@@ -580,11 +638,11 @@ void LCD_write(unsigned char c)
 	PORTB=x | (0x0f & (c >>4));
 	PORTCbits.RC5 = 1;					// LCD Enable 1
 	PORTCbits.RC5 = 0;					// LCD Enable 0
-	delay(1);
+	delay(2);							// changed from 1 to 2ms
 	PORTB=x | (0x0f & c);
 	PORTCbits.RC5 = 1;					// LCD Enable 1
 	PORTCbits.RC5 = 0;					// LCD Enable 0
-	delay(1);
+	delay(2);
 }	
 
 
@@ -602,7 +660,6 @@ void LCD_print(const far rom char *data )	// write string of data to LCD
 void init_lcd(void)						// initialize the LCD
 {
 	unsigned char x;
-	delay(50);							// wait 50ms
 
 	PORTCbits.RC0 = 0;					// LCD backlight off
 
@@ -735,11 +792,14 @@ void LCD(void)
 			LCD_write( (unsigned char)(Iset/100)+0x30 );
 			LCD_write( (unsigned char)((Iset/10)%10)+0x30 );
 			LCD_write('A');
-			LCD_write('(');
-			LCD_write( (unsigned char)(Ilimit/100)+0x30 );
-			LCD_write( (unsigned char)((Ilimit/10)%10)+0x30 );
-			LCD_write('A');
-			LCD_write(')');
+			if (Mode)						// Smart Mode?
+			{
+				LCD_write('(');				
+				LCD_write( (unsigned char)(Ilimit/100)+0x30 );
+				LCD_write( (unsigned char)((Ilimit/10)%10)+0x30 );
+				LCD_write('A');
+				LCD_write(')');
+			}
 			PORTCbits.RC3 = 0;	
 		}
 
@@ -829,15 +889,25 @@ void main(void)
 
 	init();									// initialize ports, ADC, UARTs etc
 
+	delay(500);								// wait 0,5 sec
 	init_lcd();
 
 	read_settings();						// from EEprom
+
+	LCD_write(0x80);						// address 00H / first row
+	LCD_print((const far rom char *)"Version ");
+	LCD_write(0xC0);						// address 40H / second row
+	LCD_print((const far rom char *)"1.04    ");
+
+	delay(2000);							// wait 2 sec
+
 	
 	while(1)								// MAIN loop
 	{
 
 		if (ISR2FLAG) RS232cli();			// RS232 command line interface
 
+//		if 	(PORTCbits.RC7 == 0) printf("low ");				// test
 		
 		if (State == STATE_A)				// ############### EVSE State A #################
 		{
@@ -920,6 +990,7 @@ void main(void)
 							DiodeCheck=0;
 							State = STATE_C;				// switch to STATE_C
 							LCDTimer=0;
+							init_lcd();						// re-init LCD
 							LCD();							// immediately update LCD
 							printf((const far rom char *)"STATE B->C\r\n");
 						}
