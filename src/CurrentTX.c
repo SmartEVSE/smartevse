@@ -61,7 +61,7 @@ double Irms[NR_CTS];
 unsigned int lastSampleI,sampleI;   //sample_ holds the raw analog read value, lastSample_ holds the last sample
 double lastFilteredI, filteredI;	//Filtered_ is the raw analog value minus the DC offset
 
-unsigned int sampleI_CT[NR_CTS]={0,0,0};
+unsigned int sampleI_CT[NR_CTS]={512,512,512};
 double filteredI_CT[NR_CTS]={0,0,0};
 
 
@@ -310,7 +310,7 @@ void main(void)
 		UART_SendBuf(buffer,n);			// send buffer to RS485 port
 		PORTCbits.RC5=0;				// LED off
 
-		//printf("RMS CT1:%3u.%1uA CT2:%3u.%1uA CT3:%3u.%1uA\r\n",Irms1/10, Irms1%10, Irms2/10, Irms2%10, Irms3/10, Irms3%10);
+	//	printf("CT1:%5d CT2:%5d CT3:%5d\r\n",(int)(Irms[0]*100), (int)(Irms[1]*100), (int)(Irms[2]*100));
 	}
  
 

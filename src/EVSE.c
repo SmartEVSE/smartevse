@@ -1,6 +1,6 @@
 /*
-;    Project:       Smart EVSE (3Phase), with current measurement via Current Transmitters over RS485
-;    Date:          16 October 2013
+;    Project:       Smart EVSE
+;    Date:          2 March 2016
 ;
 ;    Changes:
 ;    1.00  Initial release
@@ -8,8 +8,9 @@
 ;    1.02  Changed Max Capacity to 16A for 2,5mm2 cables
 ;    1.03  Changed Max Charge current range to 10-80A, also changed LCD delay to 2ms
 ;    1.04  Changed menu so that only relevant options are shown. Added option for fixed cable installations. (no Cable Lock, override PP pin)
+;    1.05  Added LCD menu support. Most options can now be set directly on the module itself. Fixed charge current > 65A.
 ;
-;    (C) 2013-2015  Michael Stegen / Stegen Electronics
+;    (C) 2013-2016  Michael Stegen / Stegen Electronics
 ;
 ; Permission is hereby granted, free of charge, to any person obtaining a copy
 ; of this software and associated documentation files (the "Software"), to deal
@@ -37,10 +38,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include "EVSE.h"
 
 void SetCurrent(unsigned int);
 unsigned int CalcCurrent();
-
 
 
 // Configuration settings
@@ -58,41 +59,6 @@ unsigned int CalcCurrent();
 #pragma	config EBTR0 = OFF, EBTR1 = OFF, EBTR2 = OFF, EBTR3 = OFF
 #pragma	config EBTRB = OFF
 
-#define ICAL 3.00						// Irms Calibration value (for Current transformers) 
-#define MAX_MAINS 25					// max Current the Mains connection can supply
-#define MAX_CURRENT 13					// max charging Current for the EV
-#define MIN_CURRENT 6					// minimum Current the EV will accept
-#define MODE 0							// Normal EVSE mode
-#define LOCK 0							// No Cable lock
-#define CABLE_LIMIT 13					// Manual set Cable Limit (for use with Fixed Cable)
-#define CONFIG 0						// Configuration: 0= TYPE 2 socket, 1= Fixed Cable
-
-
-#define GOODFCS16 0x0f47				// crc16 frame check value
-
-#define STATE_A 1						// Vehicle not connected
-#define STATE_B 2						// Vehicle connected / not ready to accept energy
-#define STATE_C 3						// Vehicle connected / ready to accept energy / ventilation not required
-#define STATE_D 4						// Vehicle connected / ready to accept energy / ventilation required
-
-#define PILOT_12V 1
-#define PILOT_9V 2
-#define PILOT_6V 3
-#define PILOT_DIODE 4 
-#define PILOT_NOK 0
-
-#define NO_ERROR 0
-#define LESS_6A 1
-#define CT_NOCOMM 2
-#define OVERCURRENT 4 
-#define TEMP_HIGH 5
-
-#define SOLENOID_LOCK		{PORTAbits.RA4 = 1;PORTAbits.RA5 = 0;}
-#define SOLENOID_UNLOCK		{PORTAbits.RA4 = 0;PORTAbits.RA5 = 1;}
-#define SOLENOID_OFF		{PORTAbits.RA4 = 1;PORTAbits.RA5 = 1;}
-
-#define CONTACTOR_OFF PORTBbits.RB4 = 0;				// Contactor OFF
-#define CONTACTOR_ON  PORTBbits.RB4 = 1;				// Contactor ON
 
 
 #pragma romdata eedata=0xf00000
@@ -144,8 +110,24 @@ unsigned char idx=0,idx2=0,ISRFLAG=0,ISR2FLAG=0;
 unsigned char menu=0;
 unsigned int locktimer=0,unlocktimer=0;	// solenoid timers
 unsigned long Timer=0;				// mS counter
+unsigned int ChargeTimer=0;			// Counts seconds in STATE C (Charging) (unused)
 unsigned char LCDTimer=0;
 unsigned char TempEVSE=0;			// Temperature EVSE in deg C (0-125)
+unsigned char ButtonState=0x0f;		// Holds latest push Buttons state (LSB 3:0)
+unsigned char OldButtonState=0x0f;	// Holds previous push Buttons state (LSB 3:0)
+unsigned char LCDNav=0;
+unsigned char SubMenu=0;
+unsigned long ScrollTimer=0;
+unsigned char LCDpos=8;
+
+const far rom char MenuConfig[] = "CONFIG - Set to Fixed Cable or Type 2 Socket";
+const far rom char MenuMode[] 	= "MODE   - Set to Smart mode or Normal EVSE mode";
+const far rom char MenuMains[] 	= "MAINS  - Set Max MAINS Current";
+const far rom char MenuMax[] 	= "MAX    - Set MAX Charge Current for the EV";
+const far rom char MenuMin[] 	= "MIN    - Set MIN Charge Current the EV will accept";
+const far rom char MenuCable[] 	= "CABLE  - Set Fixed Cable Current limit";
+const far rom char MenuLock[] 	= "LOCK   - Cable lock Enable/Disable";
+
 
 
 void high_isr(void);
@@ -260,7 +242,13 @@ void high_isr(void)
 			}
 		}	
 
+		TRISB = 0b10001111;				// Set PortB to read 4 button pins.
+		Nop(); 
+		ButtonState=(PORTB & 0x07);		// Read the state of the buttons, only three buttons are used right now.
+		TRISB = 0b10000000;				// Set PortB back to outputs
+
 		Timer++;						// mSec counter (overflows in 1193 hours)
+
 		PIR5bits.TMR4IF=0;				// clear interrupt flag
 	}
 	
@@ -348,7 +336,7 @@ void write_settings(void)
     }
 
     INTCON = savint; 			// Restore interrupts
-	printf((const far rom char *)"\r\ndata saved\r\n");
+	printf((const far rom char *)"\r\nsettings saved\r\n");
 
 }
 
@@ -543,24 +531,38 @@ void RS232cli(void)
 
 	if (menu==0)
 	{
-		printf((const far rom char *)"\r\n---------------------- SMART EVSE  ----------------------\r\n");
-		printf((const far rom char *)" v1.04  for detailed instructions, see www.smartevse.org\r\n");
+		printf((const far rom char *)"\r\n---------------------- SMART EVSE  ----------------------\r\n v");
+		printf((const far rom char *)VERSION);
+		printf((const far rom char *)" for detailed instructions, see www.smartevse.org\r\n");
 		printf((const far rom char *)" Internal Temperature: %2u C\r\n",TempEVSE);
 		printf((const far rom char *)"---------------------------------------------------------\r\n");
-		printf((const far rom char *)"CONFIG - Set to Fixed Cable or Type 2 Socket       (");
+		//printf((const far rom char *)"CONFIG - Set to Fixed Cable or Type 2 Socket       (");
+		printf(MenuConfig);	printf((const far rom char *)"       (");
 		if (Config) printf((const far rom char *)"Fixed Cable)\r\n");
 		else printf((const far rom char *)"Type 2 Socket)\r\n");
-		printf((const far rom char *)"MODE   - Set to Smart mode or Normal EVSE mode     (");
+		//printf((const far rom char *)"MODE   - Set to Smart mode or Normal EVSE mode     (");
+		printf(MenuMode); printf((const far rom char *)"     (");
 		if (Mode) printf((const far rom char *)"Smart)\r\n");
 		else printf((const far rom char *)"Normal)\r\n");
-		if (Mode) printf((const far rom char *)"MAINS  - Set Max MAINS Current (Smart mode)        (%3u A)\r\n",MaxMains);
-		printf((const far rom char *)"MAX    - Set MAX Charge Current for the EV         ( %2u A)\r\n",MaxCurrent);
-		if (Mode) printf((const far rom char *)"MIN    - Set MIN Charge Current the EV will accept ( %2u A)\r\n",MinCurrent);
+		if (Mode) 
+		{
+			//printf((const far rom char *)"MAINS  - Set Max MAINS Current (Smart mode)        (%3u A)\r\n",MaxMains);
+			printf(MenuMains); printf((const far rom char *)" (Smart mode)        (%3u A)\r\n",MaxMains);
+		}
+		//printf((const far rom char *)"MAX    - Set MAX Charge Current for the EV         ( %2u A)\r\n",MaxCurrent);
+		printf(MenuMax); printf((const far rom char *)"         ( %2u A)\r\n",MaxCurrent);
+		if (Mode)
+		{
+		 	//printf((const far rom char *)"MIN    - Set MIN Charge Current the EV will accept ( %2u A)\r\n",MinCurrent);
+			printf(MenuMin); printf((const far rom char *)" ( %2u A)\r\n",MinCurrent);
+		}	
 		if (Config)
 		{
-			printf((const far rom char *)"CABLE  - Set Fixed Cable Current limit             ( %2u A)\r\n",CableLimit);
+			//printf((const far rom char *)"CABLE  - Set Fixed Cable Current limit             ( %2u A)\r\n",CableLimit);
+			printf(MenuCable); printf((const far rom char *)"             ( %2u A)\r\n",CableLimit);
 		} else {
-			printf((const far rom char *)"LOCK   - Cable lock Enable/Disable                 (");
+			//printf((const far rom char *)"LOCK   - Cable lock Enable/Disable                 (");
+			printf(MenuLock); printf((const far rom char *)"                 (");
 			if (Lock) printf((const far rom char *)"Enabled)\r\n");
 			else printf((const far rom char *)"Disabled)\r\n");
 		}
@@ -616,8 +618,6 @@ void RS232cli(void)
 		printf((const far rom char *)"Fixed Cable Current limit set to: %u A\r\nEnter new limit (13-80): ",CableLimit);
 	}
 
-
-
 	ISR2FLAG=0;				// clear flag
 	idx2=0;					// reset buffer pointer
 
@@ -630,71 +630,6 @@ void delay(unsigned int d)
 	x=Timer;							// read Timer value (increased every ms)
 	while (Timer < (x+d)) { }
 }
-
-void LCD_write(unsigned char c)
-{
-	unsigned char x,y;
-	x= PORTB & 0xf0;
-	PORTB=x | (0x0f & (c >>4));
-	PORTCbits.RC5 = 1;					// LCD Enable 1
-	PORTCbits.RC5 = 0;					// LCD Enable 0
-	delay(2);							// changed from 1 to 2ms
-	PORTB=x | (0x0f & c);
-	PORTCbits.RC5 = 1;					// LCD Enable 1
-	PORTCbits.RC5 = 0;					// LCD Enable 0
-	delay(2);
-}	
-
-
-void LCD_print(const far rom char *data )	// write string of data to LCD
-{
-	PORTCbits.RC3 = 1;					// LCD RS 
-	do
-  	{
-    	LCD_write(*data);
-  	} while (*++data);
-	PORTCbits.RC3 = 0;					// LCD RS
-}
-
-
-void init_lcd(void)						// initialize the LCD
-{
-	unsigned char x;
-
-	PORTCbits.RC0 = 0;					// LCD backlight off
-
-	PORTCbits.RC5 = 0;					// LCD Enable 0
-	PORTCbits.RC4 = 0;					// LCD R/W
-	PORTCbits.RC3 = 0;					// LCD RS
-
-	x=PORTB & 0xf0;
-	PORTB=x |(0x0f & 0x3);
-	PORTCbits.RC5 = 1;					// LCD Enable 1
-	PORTCbits.RC5 = 0;					// LCD Enable 0
-	delay(5);							// wait 5ms
-
-	PORTCbits.RC5 = 1;					// LCD Enable 1
-	PORTCbits.RC5 = 0;					// LCD Enable 0
-	delay(1);							// wait 1ms
-
-	PORTCbits.RC5 = 1;					// LCD Enable 1
-	PORTCbits.RC5 = 0;					// LCD Enable 0
-	delay(1);							// wait 1ms
-
-	PORTB=x |(0x0f & 0x2);
-	PORTCbits.RC5 = 1;					// LCD Enable 1
-	PORTCbits.RC5 = 0;					// LCD Enable 0
-	delay(1);							// wait 1ms
-
-	LCD_write(0x28);
-	LCD_write(0x08);					// display off
-	LCD_write(0x01);					// display clear
-	delay(5);
-	LCD_write(0x06);					// entry mode set
-//	LCD_write(0x0D);					// display on/ blinking on
-	LCD_write(0x0C);					// display on/ blinking off
-}
-
 
 void Temp(void)								// Measure Temperature EVSE (0-125 C)
 {
@@ -714,96 +649,6 @@ void Temp(void)								// Measure Temperature EVSE (0-125 C)
 	else TempEVSE = temp-21;				// set Temp (1-125 deg C)
 }
 
-
-
-// called once a second
-void LCD(void)
-{
-		unsigned char x;
-		if (LCDTimer==10) LCDTimer=0;
-
-		if (Error)
-		{
-			PORTCbits.RC0 = 1;					// LCD backlight on
-
-			if (Error==LESS_6A)
-			{
-				LCD_write(0x80);				// address 00H / first row
-				LCD_print((const far rom char *)"ERROR NO");
-				LCD_write(0xC0);				// address 40H / second row
-				LCD_print((const far rom char *)"CURRENT!");
-			}
-			else if (Error==CT_NOCOMM)
-			{
-				LCD_write(0x80);				// address 00H / first row
-				LCD_print((const far rom char *)"ERROR NO");
-				LCD_write(0xC0);				// address 40H / second row
-				LCD_print((const far rom char *)"SER.COMM");
-			}
-			else if (Error==OVERCURRENT)
-			{
-				LCD_write(0x80);				// address 00H / first row
-				LCD_print((const far rom char *)"ERROR   ");
-				LCD_write(0xC0);				// address 40H / second row
-				LCD_print((const far rom char *)"OVERCURR");
-			}
-			else if (Error==TEMP_HIGH)
-			{
-				LCD_write(0x80);				// address 00H / first row
-				LCD_print((const far rom char *)"ERROR   ");
-				LCD_write(0xC0);				// address 40H / second row
-				LCD_print((const far rom char *)"HIGHTEMP");
-			}
-			return;
-		}
-
-		if ((LCDTimer++>4) && Mode)			
-		{
-			LCD_write(0x80);				// address 00H / first row
-			LCD_print((const far rom char *)"L1 L2 L3");
-			LCD_write(0xC0);				// address 40H / second row
-			PORTCbits.RC3 = 1;					// LCD RS 
-			for (x=0; x<3 ;x++)
-			{
-				LCD_write( (unsigned char)(Irms[x]/100)+0x30 );
-				LCD_write( (unsigned char)((unsigned int)(Irms[x]/10)%10)+0x30 );
-				LCD_write(' ');
-			}
-			PORTCbits.RC3 = 0;					// LCD RS 
-
-		}
-		else if ((State == STATE_A) || (State == STATE_B))
-		{
-			PORTCbits.RC0 = 0;					// LCD backlight off
-
-			LCD_write(0x80);				// address 00H / first row
-			LCD_print((const far rom char *)"READY TO");
-			LCD_write(0xC0);				// address 40H / second row
-			LCD_print((const far rom char *)"CHARGE  ");
-		}
-		else if (State == STATE_C)
-		{
-			PORTCbits.RC0 = 1;					// LCD backlight on
-
-			LCD_write(0x80);				// address 00H / first row
-			LCD_print((const far rom char *)"CHARGING");
-			LCD_write(0xC0);				// address 40H / second row
-			PORTCbits.RC3 = 1;					// LCD RS 
-			LCD_write( (unsigned char)(Iset/100)+0x30 );
-			LCD_write( (unsigned char)((Iset/10)%10)+0x30 );
-			LCD_write('A');
-			if (Mode)						// Smart Mode?
-			{
-				LCD_write('(');				
-				LCD_write( (unsigned char)(Ilimit/100)+0x30 );
-				LCD_write( (unsigned char)((Ilimit/10)%10)+0x30 );
-				LCD_write('A');
-				LCD_write(')');
-			}
-			PORTCbits.RC3 = 0;	
-		}
-
-}
 
 
 void init(void)
@@ -826,7 +671,7 @@ void init(void)
 	PORTB = 0;
 	ANSELB = 0;				// All digital IO
 	TRISB = 0b10000000;		// RB7 input (RX2), all other output
-	WPUB = 0x80;			// weak pullup on RB7
+	WPUB = 0x87;			// weak pullup on RB7, and RB<2:0>
 	INTCON2bits.RBPU = 0;	// Enable weak pullups on PORTB
 
 	PORTC = 0;
@@ -886,37 +731,31 @@ void main(void)
 	unsigned int timer=0; 
 	char DiodeCheck=0;
 
-
 	init();									// initialize ports, ADC, UARTs etc
 
 	delay(500);								// wait 0,5 sec
-	init_lcd();
+	LCD_init();
 
 	read_settings();						// from EEprom
-
-	LCD_write(0x80);						// address 00H / first row
-	LCD_print((const far rom char *)"Version ");
-	LCD_write(0xC0);						// address 40H / second row
-	LCD_print((const far rom char *)"1.04    ");
-
 	delay(2000);							// wait 2 sec
-
 	
 	while(1)								// MAIN loop
 	{
 
 		if (ISR2FLAG) RS232cli();			// RS232 command line interface
 
-//		if 	(PORTCbits.RC7 == 0) printf("low ");				// test
-		
+		x = ButtonState;
+		if ( (x != 0x07) || (x != OldButtonState) ) LCDMenu(x);		// Any button pressed or just released?
+
+		if ( LCDNav && (ScrollTimer+5000<Timer) && (!SubMenu) )  LCDHelp();		// Update/Show Helpmenu
+
+
 		if (State == STATE_A)				// ############### EVSE State A #################
 		{
 			CCP1CON = 0;					// PWM off
 			PORTCbits.RC2 = 1;				// Control pilot static +12V
 			CONTACTOR_OFF;					// Contactor OFF
-			Timer =0;						// reset charge Timer
-
-
+			
 			if ((Imeasured <= ((MaxMains-MinCurrent)*10)) && ((Error ==LESS_6A) || (Error==OVERCURRENT)) )
 			{	
 				Error=NO_ERROR;
@@ -940,6 +779,8 @@ void main(void)
 							DiodeCheck=0;
 							State = STATE_B;				// switch to State B
 							printf((const far rom char *)"STATE A->B\r\n");
+							ProximityPin();					// Sample Proximity Pin
+  							printf((const far rom char *)"Cable limit: %uA  Max: %uA \r\n",MaxCapacity, MaxCurrent);
 						}
 					}	
 				}
@@ -982,16 +823,16 @@ void main(void)
 						count++;							// repeat 5 times
 						if (count == 5) 
 						{
-							ProximityPin();					// Sample Proximity Pin
-  
-							printf((const far rom char *)"Cable limit: %uA  Max: %uA \r\n",MaxCapacity, MaxCurrent);
-
 							CONTACTOR_ON;					// Contactor ON
 							DiodeCheck=0;
 							State = STATE_C;				// switch to STATE_C
 							LCDTimer=0;
-							init_lcd();						// re-init LCD
-							LCD();							// immediately update LCD
+							Timer =0;						// reset msTimer and ChargeTimer
+							if (!LCDNav)					// Don't update the LCD if we are navigating the menu
+							{
+								LCD_init();					// re-init LCD
+								LCD();						// immediately update LCD
+							}
 							printf((const far rom char *)"STATE B->C\r\n");
 						}
 					}
@@ -1012,7 +853,7 @@ void main(void)
 															// this will give a "Charge error" on a Tesla Roadster
 							timer =60;						// reset timeout to 60 seconds
 						}
-						else if (timer == 0)				// We had enough current for atleat 60 secs
+						else if (timer == 0)				// We had enough current for atleast 60 secs
 						{
 							Ilimit = MaxMains*10;			// set the charge limit to MaxMains
 						}
@@ -1020,11 +861,15 @@ void main(void)
 					else NextState=0;						// no State to switch to
 				}
 			}
-			if (TMR2 > 224) 				// PWM cycle > 90% (sould be low if current < 65A)
+			if (TMR2 > 230)									// PWM > 92%
 			{
-				pilot = ReadPilot();
-				if (pilot == PILOT_DIODE) DiodeCheck=1;
-				else DiodeCheck=0;
+				while (TMR2 < 242);							// wait till TMR2 is in range, otherwise we'll miss it (blocking)
+				if ((TMR2 > 241) && (TMR2 < 249)); 			// PWM cycle >= 96% (should be low)
+				{
+					pilot = ReadPilot();
+					if (pilot == PILOT_DIODE) DiodeCheck=1;	// Diode found, OK
+					else DiodeCheck=0;
+				}
 			}
 		}							
 
@@ -1110,6 +955,8 @@ void main(void)
 			RCSTA2bits.CREN = 1;		// Restart Uart
 		}
 
+		
+
 		x= TMR0L;
 		if (TMR0H >= 0x3d )				// 1 second timer
 		{
@@ -1137,7 +984,9 @@ void main(void)
 			LCD();										// once a second, update LCD
 			Temp();										// once a second, measure temperature
 
-			if ((State==STATE_B) || (State==STATE_C)) SetCurrent(CalcCurrent());	// Calculate charge current, and set PWM output		
+			if (State==STATE_C) ChargeTimer=Timer/1000;	// Update ChargeTimer (unused)
+
+ 			if ((State==STATE_B) || (State==STATE_C)) SetCurrent(CalcCurrent());	// Calculate charge current, and set PWM output	
 		}
 
 
@@ -1173,9 +1022,10 @@ void main(void)
 	                Irms[x]= Irms[x]*ICal;						// adjust CT values with Calibration value
 					if (Irms[x] > Imeasured) Imeasured=Irms[x];	// Imeasured has highest Irms of all channels
 				}
+		
 
 #if defined(DEBUG)
-   			printf((const far rom char *)"CT1:%3u.%01uA CT2:%3u.%01uA CT3:%3u.%01uA Imeas:%3u.%01uA Ipwm:%u.%01uA\r\n",(unsigned int)Irms[0]/10, (unsigned int)Irms[0]%10, (unsigned int)Irms[1]/10, (unsigned int)Irms[1]%10, (unsigned int)Irms[2]/10, (unsigned int)Irms[2]%10,(unsigned int)Imeasured/10,(unsigned int)Imeasured%10,(unsigned int)Iset/10,(unsigned int)Iset%10);
+  			printf((const far rom char *)"CT1:%3u.%01uA CT2:%3u.%01uA CT3:%3u.%01uA Imeas:%3u.%01uA Ipwm:%u.%01uA\r\n",(unsigned int)Irms[0]/10, (unsigned int)Irms[0]%10, (unsigned int)Irms[1]/10, (unsigned int)Irms[1]%10, (unsigned int)Irms[2]/10, (unsigned int)Irms[2]%10,(unsigned int)Imeasured/10,(unsigned int)Imeasured%10,(unsigned int)Iset/10,(unsigned int)Iset%10);
 #endif
 			}
 			ISRFLAG=0;										// ready to receive new data

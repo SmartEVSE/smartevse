@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE eagle SYSTEM "eagle.dtd">
-<eagle version="6.2">
+<eagle version="6.6.0">
 <drawing>
 <settings>
 <setting alwaysvectorfont="no"/>
@@ -117,6 +117,9 @@
 <wire x1="29.21" y1="33.02" x2="29.21" y2="16.51" width="3.81" layer="26"/>
 <wire x1="29.21" y1="16.51" x2="25.4" y2="12.7" width="3.81" layer="26"/>
 <wire x1="25.4" y1="12.7" x2="25.4" y2="2.54" width="3.81" layer="26"/>
+<text x="48.895" y="17.018" size="1.27" layer="25">&lt;</text>
+<text x="52.705" y="8.382" size="1.27" layer="25" rot="R270">&lt;</text>
+<text x="52.578" y="14.732" size="1.27" layer="25" rot="R270">&lt;</text>
 </plain>
 <libraries>
 <library name="pic_18f25k22">
@@ -3410,7 +3413,7 @@ http://www.micrel.com&lt;p&gt;
 <class number="0" name="default" width="0" drill="0">
 </class>
 </classes>
-<designrules>
+<designrules name="default">
 <description language="de">&lt;b&gt;EAGLE Design Rules&lt;/b&gt;
 &lt;p&gt;
 Die Standard-Design-Rules sind so gewählt, dass sie für 
@@ -3760,7 +3763,7 @@ design rules under a new name.</description>
 <attribute name="NAME" x="81.047" y="32.3" size="1.27" layer="26" rot="MR0"/>
 <attribute name="VALUE" x="79.015" y="29.633" size="1.27" layer="28" rot="MR0"/>
 </element>
-<element name="IC6" library="tc4424" package="SOIC127P600X175-8N" value="TC4424A" x="71.808" y="31.104" smashed="yes" rot="MR180">
+<element name="IC6" library="tc4424" package="SOIC127P600X175-8N" value="FAN3214TMX" x="71.808" y="31.104" smashed="yes" rot="MR180">
 <attribute name="PACKAGE" value="SOIC-8" x="71.808" y="31.104" size="1.778" layer="28" rot="MR180" display="off"/>
 <attribute name="OC_NEWARK" value="56K7421" x="71.808" y="31.104" size="1.778" layer="28" rot="MR180" display="off"/>
 <attribute name="DESCRIPTION" value="MOSFET" x="71.808" y="31.104" size="1.778" layer="28" rot="MR180" display="off"/>
@@ -3774,11 +3777,11 @@ design rules under a new name.</description>
 <attribute name="NAME" x="76.192" y="24.973" size="1.27" layer="26" rot="MR0"/>
 <attribute name="VALUE" x="73.779" y="24.719" size="1.27" layer="28" rot="MR0"/>
 </element>
-<element name="R13" library="resistor" package="R0805" value="10K" x="73.559" y="35.516" smashed="yes" rot="MR180">
+<element name="R13" library="resistor" package="R0805" value="NP" x="73.559" y="35.516" smashed="yes" rot="MR180">
 <attribute name="NAME" x="75.337" y="36.151" size="1.27" layer="26" rot="MR180"/>
 <attribute name="VALUE" x="72.797" y="37.802" size="1.27" layer="28" rot="MR180"/>
 </element>
-<element name="R15" library="resistor" package="R0805" value="10K" x="68.288" y="27.224" smashed="yes" rot="MR180">
+<element name="R15" library="resistor" package="R0805" value="NP" x="68.288" y="27.224" smashed="yes" rot="MR180">
 <attribute name="NAME" x="65.748" y="26.081" size="1.27" layer="26" rot="MR180"/>
 <attribute name="VALUE" x="67.526" y="29.51" size="1.27" layer="28" rot="MR180"/>
 </element>

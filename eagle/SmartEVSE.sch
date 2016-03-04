@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE eagle SYSTEM "eagle.dtd">
-<eagle version="6.2">
+<eagle version="6.6.0">
 <drawing>
 <settings>
 <setting alwaysvectorfont="no"/>
@@ -17605,12 +17605,12 @@ http://www.micrel.com&lt;p&gt;
 <part name="R14" library="resistor" deviceset="R-EU_" device="R0805" value="100R"/>
 <part name="D1" library="diode" deviceset="BAT54S" device=""/>
 <part name="D4" library="diode" deviceset="BAT54S" device=""/>
-<part name="IC6" library="tc4424" deviceset="TC4424AVOA" device="" value="TC4424A"/>
+<part name="IC6" library="tc4424" deviceset="TC4424AVOA" device="" value="FAN3214TMX"/>
 <part name="GND11" library="supply1" deviceset="GND" device=""/>
 <part name="C13" library="rcl" deviceset="C-EU" device="C0805" value="100n"/>
 <part name="GND12" library="supply1" deviceset="GND" device=""/>
-<part name="R13" library="resistor" deviceset="R-EU_" device="R0805" value="10K"/>
-<part name="R15" library="resistor" deviceset="R-EU_" device="R0805" value="10K"/>
+<part name="R13" library="resistor" deviceset="R-EU_" device="R0805" value="NP"/>
+<part name="R15" library="resistor" deviceset="R-EU_" device="R0805" value="NP"/>
 <part name="C14" library="rcl" deviceset="CPOL-EU" device="E10-22.5" value="10000u 16V"/>
 <part name="C7" library="rcl" deviceset="C-EU" device="C1206" value="10u 16v"/>
 <part name="Q1" library="cts_crystal" deviceset="CTS_32X25_SMD" device=""/>
