@@ -109,33 +109,37 @@ void LCDHelp(void)							// Display/Scroll helptext on LCD
 
 			switch (LCDNav)
 			{
-				case 10:
+				case MENU_CONFIG:
 						x=strlenpgm(MenuConfig);
 						LCD_print8(MenuConfig+LCDpos);
 						break;
-				case 20:
+				case MENU_MODE:
 						x=strlenpgm(MenuMode);
 						LCD_print8(MenuMode+LCDpos);
 						break;
-				case 30:
+				case MENU_MAINS:
 						x=strlenpgm(MenuMains);
 						LCD_print8(MenuMains+LCDpos);
 						break;
-				case 40:
+				case MENU_MAX:
 						x=strlenpgm(MenuMax);
 						LCD_print8(MenuMax+LCDpos);
 						break;
-				case 50:
+				case MENU_MIN:
 						x=strlenpgm(MenuMin);
 						LCD_print8(MenuMin+LCDpos);
 						break;
-				case 60:
+				case MENU_LOCK:
 						x=strlenpgm(MenuLock);
 						LCD_print8(MenuLock+LCDpos);
 						break;
-				case 70:
+				case MENU_CABLE:
 						x=strlenpgm(MenuCable);
 						LCD_print8(MenuCable+LCDpos);
+						break;
+				case MENU_CAL:
+						x=strlenpgm(MenuCal);
+						LCD_print8(MenuCal+LCDpos);
 						break;
 
 				default:
@@ -228,7 +232,19 @@ void LCD(void)
 			LCD_write(0x80);				// address 00H / first row
 			LCD_print((const far rom char *)"READY TO");
 			LCD_write(0xC0);				// address 40H / second row
-			LCD_print((const far rom char *)"CHARGE  ");
+			LCD_print((const far rom char *)"CHARGE");
+			PORTCbits.RC3 = 1;					// LCD RS 
+			if (ChargeDelay>0)
+			{
+				LCD_write((ChargeDelay/10)+0x30 );
+				LCD_write((ChargeDelay%10)+0x30 );
+			}
+			else
+			{
+				LCD_write(' ');
+				LCD_write(' ');
+			}
+			PORTCbits.RC3 = 0;					// LCD RS 
 		}
 		else if (State == STATE_C)
 		{
@@ -244,8 +260,8 @@ void LCD(void)
 			if (Mode)						// Smart Mode?
 			{
 				LCD_write('(');				
-				LCD_write( (unsigned char)(Ilimit/100)+0x30 );
-				LCD_write( (unsigned char)((Ilimit/10)%10)+0x30 );
+				LCD_write( (unsigned char)(MaxMains/10)+0x30 );
+				LCD_write( (unsigned char)(MaxMains%10)+0x30 );
 				LCD_write('A');
 				LCD_write(')');
 			} else LCD_print((const far rom char *)"     ");	// clear rest of row
@@ -264,9 +280,10 @@ void LCD(void)
 // 50		MIN   		- Set MIN Charge Current the EV will accept (Mode=Smart)
 // 60 LOCK				- Cable lock Enable/disable
 // 70 CABLE				- Set Fixed Cable Current limit 
-// 80 EXIT				- Exit Menu
+// 80 CAL 		  		- Calibrate CT1
+// 90 EXIT				- Exit Menu
 
-// unimplemented (80		CAL   		- Calibrate CT1)
+
 
 const far rom char StrConfig[] = 	"CONFIG";
 const far rom char StrMode[] = 		" MODE ";
@@ -281,11 +298,15 @@ const far rom char StrLock[] = 		" LOCK ";
 const far rom char StrEnable[] =	"Enable";
 const far rom char StrDisable[] =	"Disabl";
 const far rom char StrCable[] = 	" CABLE";
+const far rom char StrCal[] =	 	"  CAL ";
+
 
 void LCDMenu(unsigned char Buttons)
 {
 	static unsigned long ButtonTimer=0;
 	static unsigned char ButtonRelease=0;			// keeps track of LCD Menu Navigation
+	static unsigned int CT1,CT1old;
+	static double Iold;
 	
 // Main Menu Navigation
 
@@ -296,7 +317,7 @@ void LCDMenu(unsigned char Buttons)
 	}
 	else if  (LCDNav==1 && ((ButtonTimer+2000)<Timer))		// <CONFIG>
 	{
-		LCDNav=10;							// Main Menu entered
+		LCDNav=MENU_CONFIG;					// Main Menu entered
 		PORTCbits.RC0 = 1;					// LCD backlight on
 		ButtonRelease=1;
 	}
@@ -309,15 +330,15 @@ void LCDMenu(unsigned char Buttons)
 	{
 		switch (LCDNav)
 		{
-			case 10:
+			case MENU_CONFIG:
 					if (SubMenu)
 					{
 						if (Config) Config=0;
 						else Config=1;
 					} 
-					else LCDNav=20;
+					else LCDNav=MENU_MODE;
 					break;
-			case 20:
+			case MENU_MODE:
 					if (SubMenu)
 					{
 						if (Mode) Mode=0;
@@ -325,20 +346,19 @@ void LCDMenu(unsigned char Buttons)
 					} 
 					else 
 					{
-						if (Mode) LCDNav=30;					// Smart Mode?
-						else LCDNav=40;
+						if (Mode) LCDNav=MENU_MAINS;				// Smart Mode?
+						else LCDNav=MENU_MAX;
 					}
 					break;
-			case 30:
+			case MENU_MAINS:
 					if (SubMenu)
 					{
-						MaxMains++;								// Set new MaxMains
-						if (MaxMains>100) MaxMains=100;			// Max 100A
-						Ilimit=MaxMains*10;						// Update Ilimit
+						MaxMains++;									// Set new MaxMains
+						if (MaxMains>100) MaxMains=100;				// Max 100A
 					}
-					else LCDNav=40;
+					else LCDNav=MENU_MAX;
 					break;
-			case 40:
+			case MENU_MAX:
 					if (SubMenu)
 					{
 						MaxCurrent++;								// Set new MaxCurrent
@@ -346,12 +366,12 @@ void LCDMenu(unsigned char Buttons)
 					}
 					else
 					{
-						if (Mode) LCDNav=50;					// Smart Mode?
-						else if (Config) LCDNav=70;				// Cable Configuration, go to Cable Current
-						else LCDNav=60;							// Fixed Cable, use the lock
+						if (Mode) LCDNav=MENU_MIN;					// Smart Mode?
+						else if (Config) LCDNav=MENU_CABLE;			// Cable Configuration, go to Cable Current
+						else LCDNav=MENU_LOCK;						// Fixed Cable, use the lock
 					}
 					break;
-			case 50:
+			case MENU_MIN:
 					if (SubMenu)
 					{
 						MinCurrent++;								// Set new MinCurrent
@@ -359,28 +379,42 @@ void LCDMenu(unsigned char Buttons)
 					}
 					else
 					{
-						if (Config) LCDNav=70;					// Cable Configuration, go to Cable Current
-						else LCDNav=60;							// Fixed Cable, use the lock
+						if (Config) LCDNav=MENU_CABLE;				// Cable Configuration, go to Cable Current
+						else LCDNav=MENU_LOCK;						// Fixed Cable, use the lock
 					}
 					break;
-			case 60:
+			case MENU_LOCK:
 					if (SubMenu)
 					{
 						if (Lock) Lock=0;
 						else Lock=1;
 						break;
 					} 
-		
-			case 70:
+			case MENU_CABLE:
 					if (SubMenu)
 					{
 						CableLimit++;								// Set new CableLimit
 						if (CableLimit>80) CableLimit=80;			// Max 80A
 					}
-					else LCDNav=80;
+					else 
+					{
+						if (Mode) LCDNav=MENU_CAL;
+						else LCDNav=MENU_EXIT;
+					}
 					break;
-			case 80:
-					LCDNav=10;
+			case MENU_CAL:
+					if (SubMenu)
+					{
+						if (CT1>=100 && CT1<1000) CT1++;			// Increase CT1 measurement value by 0.1A
+																	// Max 99.9A
+					}
+					else 
+					{
+						LCDNav=MENU_EXIT;
+					}
+					break;
+			case MENU_EXIT:
+					LCDNav=MENU_CONFIG;
 			default:
 					break;
 		}
@@ -390,18 +424,30 @@ void LCDMenu(unsigned char Buttons)
 	{
 		switch (LCDNav)
 		{
-			case 80:
-					if (Config) LCDNav=70;					// Cable Configuration, go to Cable Current
-					else LCDNav=60;							// Fixed Cable, use the lock
+			case MENU_EXIT:
+					if (Mode) LCDNav=MENU_CAL;					// Smart Mode? Goto Cal CT1
+					else if (Config) LCDNav=MENU_CABLE;			// Cable Configuration, go to Cable Current
+					else LCDNav=MENU_LOCK;						// Fixed Cable, use the lock
 					break;
-			case 70:
+			case MENU_CAL:
 					if (SubMenu)
 					{
-						CableLimit--;								// Set new CableLimit
-						if (CableLimit<13) CableLimit=13;			// Min 13A
+						if (CT1>100) CT1--;						// Min 10.0A
+					}
+					else 
+					{
+						if (Config) LCDNav=MENU_CABLE;			// Cable Configuration, go to Cable Current
+						else LCDNav=MENU_LOCK;					// Fixed Cable, use the lock
+					}
+					break;
+			case MENU_CABLE:
+					if (SubMenu)
+					{
+						CableLimit--;							// Set new CableLimit
+						if (CableLimit<13) CableLimit=13;		// Min 13A
 						break;
 					}
-			case 60:
+			case MENU_LOCK:
 					if (SubMenu)
 					{
 						if (Lock) Lock=0;
@@ -409,53 +455,52 @@ void LCDMenu(unsigned char Buttons)
 					} 
 					else
 					{
-						if (Mode) LCDNav=50;						// Smart Mode?
-						else LCDNav=40;
+						if (Mode) LCDNav=MENU_MIN;				// Smart Mode?
+						else LCDNav=MENU_MAX;
 					}
 					break;
-			case 50:
+			case MENU_MIN:
 					if (SubMenu)
 					{
-						MinCurrent--;								// Set new MinCurrent
-						if (MinCurrent<6) MinCurrent=6;				// Min 6A
+						MinCurrent--;							// Set new MinCurrent
+						if (MinCurrent<6) MinCurrent=6;			// Min 6A
 					}
-					else LCDNav=40;
+					else LCDNav=MENU_MAX;
 					break;
-			case 40:
+			case MENU_MAX:
 					if (SubMenu)
 					{
-						MaxCurrent--;								// Set new MaxCurrent
-						if (MaxCurrent<10) MaxCurrent=10;			// Min 10A
+						MaxCurrent--;							// Set new MaxCurrent
+						if (MaxCurrent<10) MaxCurrent=10;		// Min 10A
 					}
 					else
 					{
-						if (Mode) LCDNav=30;					// Smart Mode?
-						else LCDNav=20;
+						if (Mode) LCDNav=MENU_MAINS;			// Smart Mode?
+						else LCDNav=MENU_MODE;
 					}
 					break;
-			case 30:
+			case MENU_MAINS:
 					if (SubMenu)
 					{
 						MaxMains--;								// Set new MaxMains
 						if (MaxMains<25) MaxMains=25;			// Min 25A
-						Ilimit=MaxMains*10;						// Update Ilimit
-					} else LCDNav=20;
+					} else LCDNav=MENU_MODE;
 					break;
-			case 20:
+			case MENU_MODE:
 					if (SubMenu)
 					{
 						if (Mode) Mode=0;
 						else Mode=1;
 					} 
-					else LCDNav=10;
+					else LCDNav=MENU_CONFIG;
 					break;
-			case 10:
+			case MENU_CONFIG:
 					if (SubMenu)
 					{
 						if (Config) Config=0;
 						else Config=1;
 					} 
-					else LCDNav=80;
+					else LCDNav=MENU_EXIT;
 			default:
 					break;
 		}
@@ -463,17 +508,34 @@ void LCDMenu(unsigned char Buttons)
 	}
 	else if (LCDNav>=10 && Buttons==0x5 && ButtonRelease==0)		// Button 2 pressed?
 	{
-		if (SubMenu) SubMenu=0;
-		else 
+		if (SubMenu)									// Are we in Submenu?
 		{
-			SubMenu=1;							// Enter or Exit Submenu
-			if (LCDNav==80)						// Exit Main Menu
+			SubMenu=0;									// yes, exit Submenu
+			if (LCDNav==MENU_CAL)						// Exit CT1 calibration?
+			{
+				if (CT1!=CT1old)						// did the value change?
+				{
+					Iold=(double)(CT1old/ICal);
+					ICal=(double)(CT1/Iold);			// Calculate new Calibration value
+					Irms[0]=CT1;						// Set the Irms value, so the LCD update is instant
+				}
+			}
+		}
+		else 											// We are curently not in Submenu.
+		{
+			SubMenu=1;									// Enter Submenu now
+			if (LCDNav==MENU_CAL)						// CT1 calibration start
+			{
+				CT1=(unsigned int)Irms[0];				// make working copy of CT1 value
+				CT1old=CT1;								// and a backup
+			}
+			else if (LCDNav==MENU_EXIT)					// Exit Main Menu
 			{
 				LCDNav=0;			
 				SubMenu=0;
-				PORTCbits.RC0 = 0;				// LCD backlight off
-				Error=NO_ERROR;					// Clear Errors
-				write_settings();				// Write to eeprom
+				PORTCbits.RC0 = 0;						// LCD backlight off
+				Error=NO_ERROR;							// Clear Errors
+				write_settings();						// Write to eeprom
 				LCD();
 			}
 		}
@@ -494,46 +556,75 @@ void LCDMenu(unsigned char Buttons)
 		LCD_write(0xC0);
 		LCD_print((const far rom char *)"for Menu");
 	}
-	else if (LCDNav==10)
+	else if (LCDNav==MENU_CONFIG)
 	{
 		LCD_print_menu(StrConfig,0x80);			// add navigation arrows on both sides
 		if (Config)	LCD_print_menu(StrFixed,0xC0);	// add spaces on both sides
 		else LCD_print_menu(StrSocket,0xC0);
 	}
-	else if (LCDNav==20)
+	else if (LCDNav==MENU_MODE)
 	{ 
 		LCD_print_menu(StrMode,0x80);
 		if (Mode) LCD_print_menu(StrSmart,0xC0);
 		else LCD_print_menu(StrNormal,0xC0);
 	}
-	else if (LCDNav==30)
+	else if (LCDNav==MENU_MAINS)
 	{ 
 		LCD_print_menu(StrMains,0x80);
 		LCD_print_Amps(MaxMains);
 	}
-	else if (LCDNav==40)
+	else if (LCDNav==MENU_MAX)
 	{ 
 		LCD_print_menu(StrMax,0x80);
 		LCD_print_Amps(MaxCurrent);
 	}
-	else if (LCDNav==50)
+	else if (LCDNav==MENU_MIN)
 	{ 
 		LCD_print_menu(StrMin,0x80);
 		LCD_print_Amps(MinCurrent);
 	}
-	else if (LCDNav==60)
+	else if (LCDNav==MENU_LOCK)
 	{
 		LCD_print_menu(StrLock,0x80);
 		LCD_write(0xC0);
 		if (Lock) LCD_print_menu(StrEnable,0xC0);
 		else LCD_print_menu(StrDisable,0xC0);
 	}
-	else if (LCDNav==70)
+	else if (LCDNav==MENU_CABLE)
 	{ 
 		LCD_print_menu(StrCable,0x80);
 		LCD_print_Amps(CableLimit);
 	}
-	else if (LCDNav==80)
+	else if (LCDNav==MENU_CAL)
+	{ 
+		LCD_print_menu(StrCal,0x80);
+		LCD_write(0xC0);
+		PORTCbits.RC3 = 1;					// LCD RS 
+		if (SubMenu) 
+		{
+			LCD_write('<');
+			LCD_write(' ');
+			LCD_write( (unsigned char)(CT1/100)+0x30 );
+			LCD_write( (unsigned char)(CT1%100)/10+0x30 );
+			LCD_write('.');
+			LCD_write( (unsigned char)(CT1%10)+0x30 );
+			LCD_write('A');
+			LCD_write('>');
+		}
+		else 
+		{
+			LCD_write(' ');
+			LCD_write(' ');
+			LCD_write( (unsigned char)((unsigned int)Irms[0]/100)+0x30 );
+			LCD_write( (unsigned char)((unsigned int)Irms[0]%100/10)+0x30 );
+			LCD_write('.');
+			LCD_write( (unsigned char)((unsigned int)Irms[0]%10)+0x30 );
+			LCD_write('A');
+			LCD_write(' ');
+		}
+		PORTCbits.RC3 = 0;					// LCD RS 
+	}
+	else if (LCDNav==MENU_EXIT)
 	{
 		LCD_write(0x80);
 		LCD_print((const far rom char *)"< EXIT >");

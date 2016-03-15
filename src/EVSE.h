@@ -27,10 +27,11 @@
 #define __EVSE_MAIN
 
 #include "p18f25k22.h"
+#include <stdio.h>
 #include <string.h>
 #include "LCD.h"
 
-#define VERSION "1.05"					// SmartEVSE software version
+#define VERSION "1.06"					// SmartEVSE software version
 
 #define ICAL 3.00						// Irms Calibration value (for Current transformers) 
 #define MAX_MAINS 25					// max Current the Mains connection can supply
@@ -67,6 +68,17 @@
 #define CONTACTOR_OFF PORTBbits.RB4 = 0;				// Contactor OFF
 #define CONTACTOR_ON  PORTBbits.RB4 = 1;				// Contactor ON
 
+#define MENU_CONFIG 10
+#define MENU_MODE 20
+#define MENU_MAINS 30
+#define MENU_MAX 40
+#define MENU_MIN 50
+#define MENU_LOCK 60
+#define MENU_CABLE 70
+#define MENU_CAL 80
+#define MENU_EXIT 90
+
+
 
 #pragma udata
 extern unsigned int MaxMains;		// Max Mains Amps (hard limit, limited by the MAINS connection)
@@ -86,9 +98,8 @@ extern unsigned char Error;
 extern unsigned char NextState;
 
 extern unsigned int MaxCapacity;		// Cable limit (Amps)(limited by the wire in the charge cable, set automatically, or manually if Config=Fixed Cable)
-extern unsigned int Ilimit;				// Max current (Amps *10), depending on MaxCapacity and MaxMains
 extern unsigned int Imeasured;			// Max of all CT inputs (Amps *10)
-extern unsigned int Iset;				// PWM output is set to this current level (Amps *10)
+extern int Iset;						// PWM output is set to this current level (Amps *10)
 
 extern unsigned char RX1byte;
 extern unsigned char idx,idx2,ISRFLAG,ISR2FLAG;
@@ -104,6 +115,8 @@ extern unsigned char LCDNav;
 extern unsigned char SubMenu;
 extern unsigned long ScrollTimer;
 extern unsigned char LCDpos;
+extern unsigned char ChargeDelay;		// Delays charging up to 60 seconds in case of not enough current avilable.
+
 
 extern const far rom char MenuConfig[];
 extern const far rom char MenuMode[];
@@ -112,7 +125,7 @@ extern const far rom char MenuMax[];
 extern const far rom char MenuMin[];
 extern const far rom char MenuCable[];
 extern const far rom char MenuLock[];
-
+extern const far rom char MenuCal[];
 
 void delay(unsigned int d);
 void read_settings(void);

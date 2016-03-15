@@ -1,6 +1,6 @@
 /*
 ;    Project:       Smart EVSE
-;    Date:          2 March 2016
+;    Date:          15 March 2016
 ;
 ;    Changes:
 ;    1.00  Initial release
@@ -9,6 +9,7 @@
 ;    1.03  Changed Max Charge current range to 10-80A, also changed LCD delay to 2ms
 ;    1.04  Changed menu so that only relevant options are shown. Added option for fixed cable installations. (no Cable Lock, override PP pin)
 ;    1.05  Added LCD menu support. Most options can now be set directly on the module itself. Fixed charge current > 65A.
+;	 1.06  Added CT1 calibration to the LCD menu. Improved Smartmode current calculation and regulation.
 ;
 ;    (C) 2013-2016  Michael Stegen / Stegen Electronics
 ;
@@ -33,10 +34,8 @@
 
 
 #include "p18f25k22.h"
-#include <stdio.h>
 #include <usart.h>
 #include <stdlib.h>
-#include <string.h>
 #include <math.h>
 #include "EVSE.h"
 
@@ -101,9 +100,8 @@ unsigned char Error = NO_ERROR;
 unsigned char NextState;
 
 unsigned int MaxCapacity;			// Cable limit (Amps)(limited by the wire in the charge cable, set automatically, or manually if Config=Fixed Cable)
-unsigned int Ilimit;				// Max current (Amps *10), depending on MaxCapacity and MaxMains
 unsigned int Imeasured=0;			// Max of all CT inputs (Amps *10)
-unsigned int Iset;					// PWM output is set to this current level (Amps *10)
+int Iset=0;							// PWM output is set to this current level (Amps *10)
 
 unsigned char RX1byte;
 unsigned char idx=0,idx2=0,ISRFLAG=0,ISR2FLAG=0;
@@ -119,6 +117,7 @@ unsigned char LCDNav=0;
 unsigned char SubMenu=0;
 unsigned long ScrollTimer=0;
 unsigned char LCDpos=8;
+unsigned char ChargeDelay=0;		// Delays charging up to 60 seconds in case of not enough current avilable.
 
 const far rom char MenuConfig[] = "CONFIG - Set to Fixed Cable or Type 2 Socket";
 const far rom char MenuMode[] 	= "MODE   - Set to Smart mode or Normal EVSE mode";
@@ -127,6 +126,7 @@ const far rom char MenuMax[] 	= "MAX    - Set MAX Charge Current for the EV";
 const far rom char MenuMin[] 	= "MIN    - Set MIN Charge Current the EV will accept";
 const far rom char MenuCable[] 	= "CABLE  - Set Fixed Cable Current limit";
 const far rom char MenuLock[] 	= "LOCK   - Cable lock Enable/Disable";
+const far rom char MenuCal[]	= "CAL    - Calibrate CT1 (CT2+3 will also change)";
 
 
 
@@ -177,7 +177,9 @@ void high_isr(void)
 	while(PIR3bits.RC2IF)						// Uart2 receive interrupt?
 	{
 												// Check for BREAK character, then Reset
-   		if(RCSTA2bits.FERR && (State == STATE_A) && RCONbits.POR)
+// DEBUG!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!   
+		if(RCSTA2bits.FERR && (State == STATE_A) && RCONbits.POR)
+//		if(RCSTA2bits.FERR && RCONbits.POR)
 		{										// Make sure any data during a POR is ignored
 			RX1byte = RCREG2;					// copy received byte
 			if (!RX1byte) Reset();				// Only reset if not charging...
@@ -402,12 +404,17 @@ void SetCurrent(unsigned int current)		// current in Amps x10	(165= 16.5A)
 
 unsigned int CalcCurrent()					// calculates PWM current (Amps x10)
 {
-	Iset+= Ilimit - Imeasured;				// last PWM setting + difference between setpoint and measured value
+	int Idifference;
+
+	Idifference = (MaxMains*10) - Imeasured;			// Difference between MaxMains and Measured current (can be negative)
+
+	if (Idifference>0) Iset+=(Idifference/2);			// increase with half of difference (slowly increase current)
+	else Iset+= Idifference;							// last PWM setting + difference (immediately decrease current)
+
+	if((Iset< 0) || (Iset<60) ) Iset=60;				// minimal 6A charge
     if(Iset> (MaxCurrent*10)) Iset=(MaxCurrent*10);		// limit to Max Current (set by user)
     if(Iset> (MaxCapacity*10)) Iset=(MaxCapacity*10);	// limit to Max cable Capacity
-    if(Iset< 60) Iset= 60;				// minimal 6A charge
 	return Iset;
-
 }
 
 
@@ -451,7 +458,6 @@ void RS232cli(void)
 			if ((menu==1) && (n>24) && (n<101))
 			{
 				MaxMains=n;						// Set new MaxMains
-				Ilimit=MaxMains*10;				// Update Ilimit
 				write_settings();				// Write to eeprom
 			}
 			else if ((menu==2) && (n>9) && (n<81))
@@ -717,8 +723,6 @@ void init(void)
 	INTCONbits.GIEH = 1;	// global High Priority interrupts enabled
 	INTCONbits.GIEL = 0;	// global Low Priority interrupts disabled
 
-	Iset=MaxCurrent*10;		// initially set to MaxCurrent
-	Ilimit=MaxMains*10;		// initially set to MaxMains
 
 	printf((const far rom char *)"\r\nSmart EVSE powerup.\r\n");
 }
@@ -728,7 +732,7 @@ void main(void)
 	char *pBytes;
 	char x,n;
 	unsigned char pilot,count,timeout=5;
-	unsigned int timer=0; 
+	unsigned int i; 
 	char DiodeCheck=0;
 
 	init();									// initialize ports, ADC, UARTs etc
@@ -737,6 +741,9 @@ void main(void)
 	LCD_init();
 
 	read_settings();						// from EEprom
+	Iset=MaxCurrent*10;		// initially set to MaxCurrent
+
+
 	delay(2000);							// wait 2 sec
 	
 	while(1)								// MAIN loop
@@ -760,9 +767,9 @@ void main(void)
 			{	
 				Error=NO_ERROR;
 			}
-		
+
 			pilot = ReadPilot();
-			if (pilot == PILOT_9V)			// State B ?
+			if (pilot == PILOT_9V)			// switch to State B ?
 			{
 				if (NextState == STATE_B)
 				{
@@ -773,8 +780,9 @@ void main(void)
 						{
 							if (Error == NO_ERROR) printf((const far rom char *)"Not enough current available!\r\n");
 							Error = LESS_6A;
-						}	 
-						if (Error == NO_ERROR)
+							ChargeDelay=60;
+						}
+						if ((Error == NO_ERROR) && (ChargeDelay ==0))
 						{
 							DiodeCheck=0;
 							State = STATE_B;				// switch to State B
@@ -823,17 +831,27 @@ void main(void)
 						count++;							// repeat 5 times
 						if (count == 5) 
 						{
-							CONTACTOR_ON;					// Contactor ON
-							DiodeCheck=0;
-							State = STATE_C;				// switch to STATE_C
-							LCDTimer=0;
-							Timer =0;						// reset msTimer and ChargeTimer
-							if (!LCDNav)					// Don't update the LCD if we are navigating the menu
+							if (Imeasured > ((MaxMains-MinCurrent)*10))
 							{
-								LCD_init();					// re-init LCD
-								LCD();						// immediately update LCD
+								if (Error == NO_ERROR) printf((const far rom char *)"Not enough current available!\r\n");
+								Error = LESS_6A;
+								State = STATE_A;
+								ChargeDelay=60;
 							}
-							printf((const far rom char *)"STATE B->C\r\n");
+							if ( (Error == NO_ERROR) && (ChargeDelay==0))
+							{
+								CONTACTOR_ON;					// Contactor ON
+								DiodeCheck=0;
+								State = STATE_C;				// switch to STATE_C
+								LCDTimer=0;
+								Timer =0;						// reset msTimer and ChargeTimer
+								if (!LCDNav)					// Don't update the LCD if we are navigating the menu
+								{
+									LCD_init();					// re-init LCD
+									LCD();						// immediately update LCD
+								}
+								printf((const far rom char *)"STATE B->C\r\n");
+							}
 						}
 					}
 					else 
@@ -847,15 +865,11 @@ void main(void)
 					if (NextState == STATE_B)				// Did the EV switch from State_C to State_B?
 					{										// then there was probably not enough current available
 															// or the charging was finished.
-						if ((Imeasured > ((MaxMains-MinCurrent)*10)) && (timer <= 50))// Less then minimum current available?	
-						{									// skip first 10 seconds, so that we have a good reading of actual current.
-							Ilimit = 60;					// Set to 6A, to prevent the EV from starting to charge
-															// this will give a "Charge error" on a Tesla Roadster
-							timer =60;						// reset timeout to 60 seconds
-						}
-						else if (timer == 0)				// We had enough current for atleast 60 secs
-						{
-							Ilimit = MaxMains*10;			// set the charge limit to MaxMains
+						if ((Imeasured > ((MaxMains-MinCurrent)*10)) )
+						{									// Not enought current avilable, go to state A
+							Error = LESS_6A;
+							State = STATE_A;
+							ChargeDelay=60;
 						}
 					}
 					else NextState=0;						// no State to switch to
@@ -876,7 +890,7 @@ void main(void)
 		if (State == STATE_C)				// ############### EVSE State C #################
 		{
 											// measure voltage at ~5% of PWM cycle
-			if ((TMR2 > 7) && (TMR2 < 24))	// cycle 3% - 9% (sould be high)
+			if ((TMR2 > 7) && (TMR2 < 24))	// cycle 3% - 9% (should be high)
 			{
 				pilot = ReadPilot();
 				if ((pilot == PILOT_12V) || (pilot == PILOT_NOK))	// Disconnected or Error?
@@ -906,7 +920,6 @@ void main(void)
 							CONTACTOR_OFF;					// Contactor OFF
 							DiodeCheck=0;
 							State = STATE_B;				// switch back to STATE_B
-							timer=60;						// stay atleast 60 seconds in STATE B
 							printf((const far rom char *)"STATE C->B\r\n");
 						}
 					}
@@ -929,7 +942,15 @@ void main(void)
 					{
 						Error = OVERCURRENT;
 						State = STATE_A;						// ERROR, switch back to STATE_A
+						ChargeDelay=60;												
 						printf((const far rom char *)"Overcurrent!\r\n");
+					}
+					else if ( (Imeasured > (MaxMains*10)) && (Iset<=(MinCurrent*10)) )
+					{
+						Error = LESS_6A;
+						State = STATE_A;						// ERROR, switch back to STATE_A
+						ChargeDelay=60;												
+						printf((const far rom char *)"Not enough current available!\r\n");
 					}
 					if (TempEVSE >=60)							// Temperature too High?
 					{
@@ -962,11 +983,8 @@ void main(void)
 		{
 			TMR0H=0;
 			TMR0L=0;
-			if ((timer>0) && (Ilimit==60))
-			{
-				printf((const far rom char *)"timer:%2u\r",timer);
-				timer --;
-			}
+
+			if (ChargeDelay>0) ChargeDelay --;				// Decrease Charge Delay counter
 
 			if ((TempEVSE <55) && (Error == TEMP_HIGH))		// Temperature below limit?
 			{
@@ -986,7 +1004,12 @@ void main(void)
 
 			if (State==STATE_C) ChargeTimer=Timer/1000;	// Update ChargeTimer (unused)
 
- 			if ((State==STATE_B) || (State==STATE_C)) SetCurrent(CalcCurrent());	// Calculate charge current, and set PWM output	
+ 			if ((!Mode) && ((State==STATE_B) || (State==STATE_C)) )
+			{
+				timeout=10;						// If Normal Mode for the EVSE is selected, we'll have to set some fixed values..
+				Imeasured=0;
+				SetCurrent(CalcCurrent());		// Calculate charge current, and set PWM output	(normal mode)
+			}
 		}
 
 
@@ -1003,7 +1026,7 @@ void main(void)
 	crc16 is 2 bytes
 	total 4+(n*4)+2 bytes (+ HDLC overhead)
 */
-
+	
 		if (ISRFLAG > 1) 	// complete packet detected?
 		{
 			crc16 = calc_crc16(U1buffer, ISRFLAG);
@@ -1020,24 +1043,19 @@ void main(void)
 	                *pBytes++=U1buffer[n++];
 	                *pBytes=U1buffer[n++];
 	                Irms[x]= Irms[x]*ICal;						// adjust CT values with Calibration value
-					if (Irms[x] > Imeasured) Imeasured=Irms[x];	// Imeasured has highest Irms of all channels
+					if (Irms[x] > Imeasured) Imeasured=Irms[x];	// Imeasured holds highest Irms of all channels
 				}
 		
+ 			if ((Mode) && ((State==STATE_B) || (State==STATE_C)) ) SetCurrent(CalcCurrent());		// Calculate charge current, and set PWM output	(Smart mode)
 
-#if defined(DEBUG)
-  			printf((const far rom char *)"CT1:%3u.%01uA CT2:%3u.%01uA CT3:%3u.%01uA Imeas:%3u.%01uA Ipwm:%u.%01uA\r\n",(unsigned int)Irms[0]/10, (unsigned int)Irms[0]%10, (unsigned int)Irms[1]/10, (unsigned int)Irms[1]%10, (unsigned int)Irms[2]/10, (unsigned int)Irms[2]%10,(unsigned int)Imeasured/10,(unsigned int)Imeasured%10,(unsigned int)Iset/10,(unsigned int)Iset%10);
-#endif
+  		//	printf((const far rom char *)"STATE:%c ChargeDelay:%u CT1:%3u.%01uA CT2:%3u.%01uA CT3:%3u.%01uA Imeas:%3u.%01uA Iset:%u.%01uA\r\n",State-1+'A', ChargeDelay, (unsigned int)Irms[0]/10, (unsigned int)Irms[0]%10, (unsigned int)Irms[1]/10, (unsigned int)Irms[1]%10, (unsigned int)Irms[2]/10, (unsigned int)Irms[2]%10,(unsigned int)Imeasured/10,(unsigned int)Imeasured%10,(unsigned int)Iset/10,(unsigned int)Iset%10);
+
 			}
 			ISRFLAG=0;										// ready to receive new data
 			if (Error == CT_NOCOMM) Error=NO_ERROR;			// Clear communication error, if present
 			timeout=10;										// 10 second timeout for CT data
 		}
 
-		if (!Mode)				// If Normal Mode for the EVSE is selected, we'll have to set some fixed values..
-		{
-			timeout=10;
-			Imeasured=0;
-		}
 
 	} // end of while(1) loop
 }
