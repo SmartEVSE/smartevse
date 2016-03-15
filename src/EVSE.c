@@ -177,9 +177,7 @@ void high_isr(void)
 	while(PIR3bits.RC2IF)						// Uart2 receive interrupt?
 	{
 												// Check for BREAK character, then Reset
-// DEBUG!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!   
 		if(RCSTA2bits.FERR && (State == STATE_A) && RCONbits.POR)
-//		if(RCSTA2bits.FERR && RCONbits.POR)
 		{										// Make sure any data during a POR is ignored
 			RX1byte = RCREG2;					// copy received byte
 			if (!RX1byte) Reset();				// Only reset if not charging...
@@ -1004,11 +1002,11 @@ void main(void)
 
 			if (State==STATE_C) ChargeTimer=Timer/1000;	// Update ChargeTimer (unused)
 
- 			if ((!Mode) && ((State==STATE_B) || (State==STATE_C)) )
+ 			if (!Mode)
 			{
-				timeout=10;						// If Normal Mode for the EVSE is selected, we'll have to set some fixed values..
+				timeout=10;								// If Normal Mode for the EVSE is selected, we'll have to set some fixed values..
 				Imeasured=0;
-				SetCurrent(CalcCurrent());		// Calculate charge current, and set PWM output	(normal mode)
+				if ((State==STATE_B) || (State==STATE_C)) SetCurrent(CalcCurrent());		// Calculate charge current, and set PWM output	(normal mode)
 			}
 		}
 
