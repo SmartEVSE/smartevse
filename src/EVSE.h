@@ -31,7 +31,8 @@
 #include <string.h>
 #include "LCD.h"
 
-#define VERSION "1.06"					// SmartEVSE software version
+#define VERSION "1.07"					// SmartEVSE software version
+//#define DEBUG_P							// Debug print enable/disable
 
 #define ICAL 3.00						// Irms Calibration value (for Current transformers) 
 #define MAX_MAINS 25					// max Current the Mains connection can supply
@@ -41,13 +42,20 @@
 #define LOCK 0							// No Cable lock
 #define CABLE_LIMIT 13					// Manual set Cable Limit (for use with Fixed Cable)
 #define CONFIG 0						// Configuration: 0= TYPE 2 socket, 1= Fixed Cable
+#define LOADBL 0						// Load Balancing disabled
+#define CHARGEDELAY 60					// Seconds to wait after overcurrent, before tryting again
 
 #define GOODFCS16 0x0f47				// crc16 frame check value
+#define ACK_TIMEOUT 1000				// 1000ms timeout
 
 #define STATE_A 1						// Vehicle not connected
 #define STATE_B 2						// Vehicle connected / not ready to accept energy
 #define STATE_C 3						// Vehicle connected / ready to accept energy / ventilation not required
 #define STATE_D 4						// Vehicle connected / ready to accept energy / ventilation required
+#define STATE_COMM_A 5					// Waiting for response from Master
+#define STATE_COMM_B 6					// Waiting for response from Master
+#define STATE_COMM_C 7					// Waiting for response from Master
+#define STATE_COMM_CB 8					// Waiting for response from Master
 
 #define PILOT_12V 1
 #define PILOT_9V 2
@@ -58,18 +66,19 @@
 #define NO_ERROR 0
 #define LESS_6A 1
 #define CT_NOCOMM 2
-#define OVERCURRENT 4 
-#define TEMP_HIGH 5
+#define TEMP_HIGH 3
+#define NOCURRENT 4						// No Current! ERROR=LESS_6A, switch to STATE A
 
-#define SOLENOID_LOCK		{PORTAbits.RA4 = 1;PORTAbits.RA5 = 0;}
-#define SOLENOID_UNLOCK		{PORTAbits.RA4 = 0;PORTAbits.RA5 = 1;}
-#define SOLENOID_OFF		{PORTAbits.RA4 = 1;PORTAbits.RA5 = 1;}
+#define SOLENOID_LOCK		{LATAbits.LATA4 = 1;LATAbits.LATA5 = 0;}
+#define SOLENOID_UNLOCK		{LATAbits.LATA4 = 0;LATAbits.LATA5 = 1;}
+#define SOLENOID_OFF		{LATAbits.LATA4 = 1;LATAbits.LATA5 = 1;}
 
-#define CONTACTOR_OFF PORTBbits.RB4 = 0;				// Contactor OFF
-#define CONTACTOR_ON  PORTBbits.RB4 = 1;				// Contactor ON
+#define CONTACTOR_OFF LATBbits.LATB4 = 0;				// Contactor OFF
+#define CONTACTOR_ON  LATBbits.LATB4 = 1;				// Contactor ON
 
 #define MENU_CONFIG 10
 #define MENU_MODE 20
+#define MENU_LOADBL 100
 #define MENU_MAINS 30
 #define MENU_MAX 40
 #define MENU_MIN 50
@@ -77,6 +86,12 @@
 #define MENU_CABLE 70
 #define MENU_CAL 80
 #define MENU_EXIT 90
+
+#ifdef DEBUG_P
+ #define DEBUG_PRINT(x) printf(x)
+#else
+ #define DEBUG_PRINT(x)
+#endif 
 
 
 
@@ -89,7 +104,11 @@ extern char Mode;					// EVSE mode
 extern char Lock;					// Cable lock enable/disable
 extern unsigned int CableLimit;		// Fixed Cable Current limit (only used when config is set to Fixed Cable)
 extern char Config;					// Configuration (Fixed Cable or Type 2 Socket)
-// total 15 bytes
+extern char LoadBl;					// Load Balance Setting (Disable, Master or Slave)
+
+#define EEPROM_BYTES 16				// total 16 bytes
+
+
 extern double Irms[4];				// Momentary current per Phase (Amps *10) (23= 2.3A)
 									// Max 4 phases supported
 extern unsigned int crc16;
@@ -99,7 +118,8 @@ extern unsigned char NextState;
 
 extern unsigned int MaxCapacity;		// Cable limit (Amps)(limited by the wire in the charge cable, set automatically, or manually if Config=Fixed Cable)
 extern unsigned int Imeasured;			// Max of all CT inputs (Amps *10)
-extern int Iset;						// PWM output is set to this current level (Amps *10)
+//extern int Iset;						// PWM output is set to this current level (Amps *10)
+extern int Balanced[4];					// Amps value per EVSE (max 4)
 
 extern unsigned char RX1byte;
 extern unsigned char idx,idx2,ISRFLAG,ISR2FLAG;
@@ -120,6 +140,7 @@ extern unsigned char ChargeDelay;		// Delays charging up to 60 seconds in case o
 
 extern const far rom char MenuConfig[];
 extern const far rom char MenuMode[];
+extern const far rom char MenuLoadBl[];
 extern const far rom char MenuMains[];
 extern const far rom char MenuMax[];
 extern const far rom char MenuMin[];

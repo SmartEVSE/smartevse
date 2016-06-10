@@ -117,6 +117,10 @@ void LCDHelp(void)							// Display/Scroll helptext on LCD
 						x=strlenpgm(MenuMode);
 						LCD_print8(MenuMode+LCDpos);
 						break;
+				case MENU_LOADBL:
+						x=strlenpgm(MenuLoadBl);
+						LCD_print8(MenuLoadBl+LCDpos);
+						break;
 				case MENU_MAINS:
 						x=strlenpgm(MenuMains);
 						LCD_print8(MenuMains+LCDpos);
@@ -192,13 +196,6 @@ void LCD(void)
 				LCD_write(0xC0);				// address 40H / second row
 				LCD_print((const far rom char *)"SER.COMM");
 			}
-			else if (Error==OVERCURRENT)
-			{
-				LCD_write(0x80);				// address 00H / first row
-				LCD_print((const far rom char *)"ERROR   ");
-				LCD_write(0xC0);				// address 40H / second row
-				LCD_print((const far rom char *)"OVERCURR");
-			}
 			else if (Error==TEMP_HIGH)
 			{
 				LCD_write(0x80);				// address 00H / first row
@@ -254,8 +251,8 @@ void LCD(void)
 			LCD_print((const far rom char *)"CHARGING");
 			LCD_write(0xC0);				// address 40H / second row
 			PORTCbits.RC3 = 1;					// LCD RS 
-			LCD_write( (unsigned char)(Iset/100)+0x30 );
-			LCD_write( (unsigned char)((Iset/10)%10)+0x30 );
+			LCD_write( (Balanced[0]/10)+0x30 );
+			LCD_write( (Balanced[0]%10)+0x30 );
 			LCD_write('A');
 			if (Mode)						// Smart Mode?
 			{
@@ -275,6 +272,7 @@ void LCD(void)
 //##############################################################################################################################
 // 10 CONFIG			- Set to Fixed Cable or Type 2 Socket
 // 20 MODE  			- Set to Smart mode, or Normal EVSE mode
+// 25 LOADBL			- Load Balance, set to Disable, Master or Slave
 // 30		MAINS 		- Set max MAINS Current (25-100) (Mode=Smart)
 // 40 MAX   			- Set MAX Charge Current for the EV (16-80)
 // 50		MIN   		- Set MIN Charge Current the EV will accept (Mode=Smart)
@@ -295,10 +293,16 @@ const far rom char StrMains[] = 	" MAINS";
 const far rom char StrMax[] =	 	"  MAX ";
 const far rom char StrMin[] = 		"  MIN ";
 const far rom char StrLock[] = 		" LOCK ";
-const far rom char StrEnable[] =	"Enable";
+const far rom char StrSolenoid[] =	"Soleno";
+const far rom char StrMotor[] =		"Motor ";
 const far rom char StrDisable[] =	"Disabl";
 const far rom char StrCable[] = 	" CABLE";
 const far rom char StrCal[] =	 	"  CAL ";
+const far rom char StrLoadBl[] =	"LOADBL";
+const far rom char StrMaster[] =	"Master";
+const far rom char StrSlave1[] =	"Slave1";
+const far rom char StrSlave2[] =	"Slave2";
+const far rom char StrSlave3[] =	"Slave3";
 
 
 void LCDMenu(unsigned char Buttons)
@@ -344,6 +348,14 @@ void LCDMenu(unsigned char Buttons)
 						if (Mode) Mode=0;
 						else Mode=1;
 					} 
+					else LCDNav=MENU_LOADBL;
+					break;
+			case MENU_LOADBL:
+					if (SubMenu)
+					{
+						if (LoadBl==4) LoadBl=0;					// last menu item? goto first
+						else LoadBl++;								// goto next
+					} 
 					else 
 					{
 						if (Mode) LCDNav=MENU_MAINS;				// Smart Mode?
@@ -386,8 +398,8 @@ void LCDMenu(unsigned char Buttons)
 			case MENU_LOCK:
 					if (SubMenu)
 					{
-						if (Lock) Lock=0;
-						else Lock=1;
+						if (Lock==2) Lock=0;
+						else Lock++;
 						break;
 					} 
 			case MENU_CABLE:
@@ -450,8 +462,8 @@ void LCDMenu(unsigned char Buttons)
 			case MENU_LOCK:
 					if (SubMenu)
 					{
-						if (Lock) Lock=0;
-						else Lock=1;
+						if (Lock==0) Lock=2;
+						else Lock--;
 					} 
 					else
 					{
@@ -476,7 +488,7 @@ void LCDMenu(unsigned char Buttons)
 					else
 					{
 						if (Mode) LCDNav=MENU_MAINS;			// Smart Mode?
-						else LCDNav=MENU_MODE;
+						else LCDNav=MENU_LOADBL;
 					}
 					break;
 			case MENU_MAINS:
@@ -484,7 +496,15 @@ void LCDMenu(unsigned char Buttons)
 					{
 						MaxMains--;								// Set new MaxMains
 						if (MaxMains<25) MaxMains=25;			// Min 25A
-					} else LCDNav=MENU_MODE;
+					} else LCDNav=MENU_LOADBL;
+					break;
+			case MENU_LOADBL:
+					if (SubMenu)
+					{
+						if (LoadBl==0) LoadBl=4;					// first menu item? goto last
+						else LoadBl--;								// goto previous
+					} 
+					else LCDNav=MENU_MODE;
 					break;
 			case MENU_MODE:
 					if (SubMenu)
@@ -568,6 +588,15 @@ void LCDMenu(unsigned char Buttons)
 		if (Mode) LCD_print_menu(StrSmart,0xC0);
 		else LCD_print_menu(StrNormal,0xC0);
 	}
+	else if (LCDNav==MENU_LOADBL)
+	{ 
+		LCD_print_menu(StrLoadBl,0x80);
+		if (LoadBl==0) LCD_print_menu(StrDisable,0xC0);
+		else if (LoadBl==1) LCD_print_menu(StrMaster,0xC0);
+		else if (LoadBl==2) LCD_print_menu(StrSlave1,0xC0);
+		else if (LoadBl==3) LCD_print_menu(StrSlave2,0xC0);
+		else LCD_print_menu(StrSlave3,0xC0);
+	}
 	else if (LCDNav==MENU_MAINS)
 	{ 
 		LCD_print_menu(StrMains,0x80);
@@ -587,7 +616,8 @@ void LCDMenu(unsigned char Buttons)
 	{
 		LCD_print_menu(StrLock,0x80);
 		LCD_write(0xC0);
-		if (Lock) LCD_print_menu(StrEnable,0xC0);
+		if (Lock==1) LCD_print_menu(StrSolenoid,0xC0);
+		else if (Lock==2) LCD_print_menu(StrMotor,0xC0);
 		else LCD_print_menu(StrDisable,0xC0);
 	}
 	else if (LCDNav==MENU_CABLE)
