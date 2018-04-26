@@ -751,7 +751,7 @@ void GLCDMenu(unsigned char Buttons)
 					if (SubMenu)
 					{
 						MaxMains--;								// Set new MaxMains
-						if (MaxMains<25) MaxMains=25;			// Min 25A
+						if (MaxMains<16) MaxMains=16;			// Min 16A (changed from 25A originally)
 					} else LCDNav=MENU_LOADBL;
 					break;
 			case MENU_LOADBL:
