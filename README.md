@@ -3,7 +3,7 @@ SmartEVSE
 
 Smart Electric Vehicle Charge Controller
 
-![Image of SmartEVSE](https://github.com/SmartEVSE/smartevse/pictures/SmartEVSEv2white.jpg)
+![Image of SmartEVSE](/pictures/SmartEVSEv2white.jpg)
 
 <h1>What is it?</h1>
 
@@ -21,6 +21,7 @@ New V2.04 features are:
 - 12V status LED, will indicate charging/stopped/ready to charge and error conditions to be visible.
 
 <h1>Features</h1>:
+
 - Fits into a standard DIN rail enclosure.
 - Measures the current consumption of other appliances, and automatically lowers or increases the charging current to the EV. (sensorbox required)
 - The load balancing feature let's you connect up to 4 SmartEVSE's to one mains supply.
@@ -39,7 +40,7 @@ New V2.04 features are:
 The Sensorbox should be placed where the Mains connection enters the building. Usually just after the kWh meter, this way it will be able to measure the total current per phase and send this information to the SmartEVSE.
 In order to measure the current, Current transformers are used. Clip them around the L1,L2 and L3 wires, and plug the other end into the sensorbox.
 
-![Image of Sensorbox](https://github.com/SmartEVSE/smartevse/pictures/sensorbox.jpg)
+![Image of Sensorbox](/pictures/sensorbox.jpg)
 
 
 The project folders are as follows:
