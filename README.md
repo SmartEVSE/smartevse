@@ -70,12 +70,13 @@ you will need:
 
 When using a fixed charging cable, make sure you’ll add a resistor between PP and PE on the plug. Otherwise the EV will not start charging.
 
-100 Ohm = 63A
-
-220 Ohm = 32 A
-
-680 Ohm = 16A 
+100 Ohm = 63A<br>
+220 Ohm = 32A<br>
+680 Ohm = 16A<br>
 
 The EVSE needs to be protected with a circuit breaker and residual-current circuit breaker, usually located near or in the distribution board.
 
+<h1>Buy the SmartEVSE</h1>
 
+You can buy a complete assembled SmartEVSEv2 [here](http://www.stegen.com/en/ev-products/66-smart-evse-controller.html)
+Information on how to compile and setup the controller can be found on the [smartevse.nl website](http://www.smartevse.nl)
