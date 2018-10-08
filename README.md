@@ -32,8 +32,7 @@ The project consists of two parts:
 
 New V2.04 features are:
 - Access control option added, allows for (RFID) locks to be connected, and usage of the Charging stating to be restricted.
-- 12V status LED, will indicate charging/stopped/ready to charge and error conditions to be visible.
-
+- Status LED option, will indicate charging/stopped/ready to charge and error conditions to be visible.
 
 <h1>The Sensorbox</h1>
 
@@ -68,15 +67,11 @@ you will need:
 - Enclosure with DIN rail. (for example Famatel type 3958)
 - Terminal blocks (Wago TOPJOB S)
 
-When using a fixed charging cable, make sure you’ll add a resistor between PP and PE on the plug. Otherwise the EV will not start charging.
-
-100 Ohm = 63A<br>
-220 Ohm = 32A<br>
-680 Ohm = 16A<br>
-
 The EVSE needs to be protected with a circuit breaker and residual-current circuit breaker, usually located near or in the distribution board.
 
-<h1>Buy the SmartEVSE</h1>
+<h1>Purchase the SmartEVSE</h1>
 
-You can buy a complete assembled SmartEVSEv2 [here](http://www.stegen.com/en/ev-products/66-smart-evse-controller.html)
-Information on how to compile and setup the controller can be found on the [smartevse.nl website](http://www.smartevse.nl)
+You can buy a complete assembled SmartEVSEv2 [here](http://www.stegen.com/en/ev-products/66-smart-evse-controller.html)<br>
+Information on how to compile and setup the controller can be found on the [smartevse.nl](http://www.smartevse.nl) website.
+
+<b>The assembled SmartEVSE v2 modules come pre-programmed with the latest firmware, and are fully tested!</b>
