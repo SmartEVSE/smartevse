@@ -3,7 +3,7 @@ SmartEVSE
 
 Smart Electric Vehicle Charge Controller
 
-![Image of SmartEVSE](/pictures/SmartEVSEv2white.jpg)
+![Image of SmartEVSE](/pictures/SmartEVSEv2_small.jpg)
 
 <h1>What is it?</h1>
 
@@ -15,12 +15,7 @@ The project consists of two parts:
 - Smart EVSE controller
 - Sensorbox with CT's
 
-
-New V2.04 features are:
-- Access control option added, allows for (RFID) locks to be connected, and usage of the Charging stating to be restricted.
-- 12V status LED, will indicate charging/stopped/ready to charge and error conditions to be visible.
-
-<h1>Features</h1>:
+<h1>Features</h1>
 
 - Fits into a standard DIN rail enclosure.
 - Measures the current consumption of other appliances, and automatically lowers or increases the charging current to the EV. (sensorbox required)
@@ -35,19 +30,52 @@ New V2.04 features are:
 - Setup can also be done through serial CLI.
 - Firmware upgradable through serial bootloader. 
 
+New V2.04 features are:
+- Access control option added, allows for (RFID) locks to be connected, and usage of the Charging stating to be restricted.
+- 12V status LED, will indicate charging/stopped/ready to charge and error conditions to be visible.
+
+
 <h1>The Sensorbox</h1>
 
 The Sensorbox should be placed where the Mains connection enters the building. Usually just after the kWh meter, this way it will be able to measure the total current per phase and send this information to the SmartEVSE.
+
 In order to measure the current, Current transformers are used. Clip them around the L1,L2 and L3 wires, and plug the other end into the sensorbox.
 
 ![Image of Sensorbox](/pictures/sensorbox.jpg)
 
+<h1>Configuring the SmartEVSE</h1>
 
-The project folders are as follows:
-/bootloader		microchip bootloader software
-/cad			3D openscad files for the sensorbox
-/eagle			schematics and pcb layouts for the EVSE controller, Sensorbox (3PCurrentTX), and optional LCD
-/pictures		pictures of the boards, my single phase Roadster EVSE, and Three phase EVSE
-/sourcecode		Microchip MPLAB sourcecode and HEX files.
+The SmartEVSE has a display, which shows the charging status, and if smart mode is used, also the measured current per phase.
+It is possible to configure all settings using the built-in menu.
+
+Three buttons below the display are used for navigating the menu.
+
+Hold the center button for 2 seconds to enter the menu.
+You can now use the left and right buttons to go to the different menu options. 
+
+Pressing the center button, selects the option, and allows you change the value (for example change the charging current)
+
+![Image of Menu](/pictures/SmartEVSEv2_mode_smart.jpg)
+
+<h1>Building the EVSE</h1>
+
+In order to build a complete EVSE (charging station)
+you will need:
+
+- SmartEVSE.
+- 4 pole NO Contactor rated for the max charging current. (for example Hager ESC440)
+- Fixed charging cable or socket with locking solenoid.
+- Enclosure with DIN rail. (for example Famatel type 3958)
+- Terminal blocks (Wago TOPJOB S)
+
+When using a fixed charging cable, make sure you’ll add a resistor between PP and PE on the plug. Otherwise the EV will not start charging.
+
+100 Ohm = 63A
+
+220 Ohm = 32 A
+
+680 Ohm = 16A 
+
+The EVSE needs to be protected with a circuit breaker and residual-current circuit breaker, usually located near or in the distribution board.
 
 
