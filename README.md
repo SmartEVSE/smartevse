@@ -7,8 +7,8 @@ Smart Electric Vehicle Charge Controller
 
 <h1>What is it?</h1>
 
-It's a Open Hardware and Software EVSE (Electric Vehicle Supply Equipment). It supports 1-3 phase charging, fixed charging cable or charging socket. Locking actuator support (3 different types). And it can directly drive a mains contactor for supplying power to the EV. It features a display from which all module parameters can be configured.
-Up to 4 four modules can be connected together to charge up to four EV's from one mains connection without overloading it.
+It's a Open Hardware and Software EVSE (Electric Vehicle Supply Equipment). It supports 1-3 phase charging, fixed charging cable or charging socket. Locking actuator support (3 different types). And it can directly drive a mains contactor for supplying power to the EV. It features a display from which all module parameters can be configured.<br>
+Up to 4 four modules can be connected together to charge up to four EV's from one mains connection without overloading it.<br>
 Smart Charging is done with the (optional) sensorbox and CT's (Current Transformers) which can be directly connected to the controller's RS485 pins.
 
 The project consists of two parts:
