@@ -45,6 +45,7 @@
 #define CONFIG 0						// Configuration: 0= TYPE 2 socket, 1= Fixed Cable
 #define LOADBL 0						// Load Balancing disabled
 #define CHARGEDELAY 60					// Seconds to wait after overcurrent, before tryting again
+#define ACCESSTIME 60					// Seconds of Access after pulse on I/O 2
 
 #define GOODFCS16 0x0f47				// crc16 frame check value
 #define ACK_TIMEOUT 1000				// 1000ms timeout
@@ -72,6 +73,7 @@
 #define TEMP_HIGH 3
 #define NOCURRENT 4						// No Current! ERROR=LESS_6A, switch to STATE A
 #define Test_IO 6
+#define NOACCESS 7						// No Access by RFID tag!
 
 #define SOLENOID_LOCK		{PORTAbits.RA4 = 1;PORTAbits.RA5 = 0;}
 #define SOLENOID_UNLOCK		{PORTAbits.RA4 = 0;PORTAbits.RA5 = 1;}

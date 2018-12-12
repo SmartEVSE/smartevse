@@ -126,6 +126,7 @@ unsigned char LCDpos=8;
 unsigned char ChargeDelay=0;		// Delays charging up to 60 seconds in case of not enough current available.
 unsigned char NoCurrent=0;			// counts overcurrent situations.
 unsigned char TestState=0;
+unsigned int isAccessAvailable=0;
 
 const far char MenuConfig[] = "CONFIG - Set to Fixed Cable or Type 2 Socket";
 const far char MenuMode[] 	= "MODE   - Set to Smart mode or Normal EVSE mode";
@@ -287,7 +288,29 @@ void interrupt high_isr(void)
 				unlocktimer=0;
 			}
 		}	
-
+		
+		if (State != STATE_C) // Not Charging?
+​		{
+			LATBbits.LATB3 = 1; // Set I/O 1 to high
+​			if (PORTBbits.RB2 == 1) // Check if access is given on I/O 2
+			{
+				LATBbits.LATB1=1; // Set I/O 3 to high (For LED)
+​				isAccessAvailable = Timer + (ACCESSTIME * 1000);
+			}
+			else if (isAccessAvailable < Timer) // Access expired
+			{
+				LATBbits.LATB1=0; // Set I/O 3 to low
+				isAccessAvailable = 0;
+			}
+			else if (isAccessAvailable > (Timer + (ACCESSTIME * 2000)) isAccessAvailable = 0; // Overflow of Timer
+		}
+		else // State C, charging
+		{
+			LATBbits.LATB3 = 0; // Set I/O 1 to low
+			LATBbits.LATB1=1; // Set I/O 3 to high (For LED)
+			isAccessAvailable = 0; 
+		}
+		
 		Timer++;						// mSec counter (overflows in 1193 hours)
 
 		PIR5bits.TMR4IF=0;				// clear interrupt flag
@@ -1175,6 +1198,7 @@ void main(void)
 					if (count++ > 5) 													// repeat 5 times
 					{
 						if (IsCurrentAvailable()==1 ) Error = NOCURRENT;			// Enough current available to start Charging?
+						if (isAccessAvailable < Timer ) Error = NOACCESS;			// Is charging permitted?
 	
 						if (ChargeDelay==0 && Error==NO_ERROR)
 						{
@@ -1261,7 +1285,7 @@ void main(void)
 								else
 								{															// Load Balancing: Master or Disabled
 									BalancedMax[0]=MaxCapacity;
-									if (IsCurrentAvailable()==0)
+									if ((IsCurrentAvailable()==0) && (isAccessAvailable < Timer))
 									{
 										BalancedState[0]=2;										// Mark as Charging
 										Balanced[0]=0;											// For correct baseload calculation set current to zero
@@ -1279,7 +1303,11 @@ void main(void)
 										}
 										printf("STATE B->C\r\n");
 									} 
-									else Error = NOCURRENT;
+									else 
+									{
+										if (IsCurrentAvailable()==0) Error = NOCURRENT;
+										if (isAccessAvailable < Timer) Error = NOACCESS;
+									}
 								}
 							}
 						}
