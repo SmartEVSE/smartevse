@@ -1457,6 +1457,11 @@ void main(void)
 			{	
 				Error=NO_ERROR;								// Clear Errors if there is enough current available
 			}
+			
+			if (Error==NOACCESS)
+			{	
+				Error=NO_ERROR;								// Clear Access Error
+			}
             
 			if ((timeout == 0) && (Error == NO_ERROR)) 	// timout if CT current measurement takes > 10 secs
 			{
@@ -1705,6 +1710,7 @@ void main(void)
 			ISRFLAG=0;										// ready to receive new data
         	if (Error == CT_NOCOMM && timeout==10) Error=NO_ERROR;					// Clear communication error, if present
 			if (Error == LESS_6A && ChargeDelay==0 && LoadBl>1) Error=NO_ERROR;		// Clear Error after delay (Slave)
+			if (Error == NOACCESS) Error=NO_ERROR;									// Clear Error after delay (Slave)
 		
         } // (ISRFLAG > 1) 	 complete packet detected?
 
