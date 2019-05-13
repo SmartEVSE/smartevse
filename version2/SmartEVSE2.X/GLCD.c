@@ -312,8 +312,8 @@ const far char StrEnabled[] = "Enabled";
 const far char StrExit[]    = "EXIT";
 const far char StrExitMenu[] = "MENU";
 
-
 unsigned int GLCDx, GLCDy;
+unsigned int MenuItems[12];
 
 // uses buffer
 void GLCD_print_row(const far char *data)                                       // write 10 characters to LCD
@@ -376,12 +376,60 @@ void GLCD_print_Amps(unsigned int Amps)                                         
     GLCD_sendbuf(4);                                                            // copy buffer to LCD
 }
 
+unsigned char getMenuItems (void) {
+    unsigned char m = 2;
+
+    MenuItems[m++] = MENU_CONFIG;                                               // Configuration (0:Socket / 1:Fixed Cable)
+    MenuItems[m++] = MENU_MODE;                                                 // EVSE mode (0:Normal / 1:Smart)
+    MenuItems[m++] = MENU_LOADBL;                                               // Load Balance Setting (0:Disable / 1:Master / 2-4:Slave)
+    if (Mode || (LoadBl == 1)) {                                                // ? Smart mode and Load Balancing Master?
+        MenuItems[m++] = MENU_MAINS;                                            // - Max Mains Amps (hard limit, limited by the MAINS connection) (A)
+    }
+    MenuItems[m++] = MENU_MAX;                                                  // Max Charge current (A)
+    if (Mode || (LoadBl == 1)) {                                                // ? Smart mode and Load Balancing Master?
+        MenuItems[m++] = MENU_MIN;                                              // - Minimal current the EV is happy with (A)
+    }
+    if (Config) {                                                               // ? Fixed Cable?
+        MenuItems[m++] = MENU_CABLE;                                            // - Fixed Cable Current limit
+    } else {                                                                    // ? Socket?
+        MenuItems[m++] = MENU_LOCK;                                             // - Cable lock (0:Disable / 1:Solenoid / 2:Motor)
+    }
+    if (Mode) {                                                                 // ? Smart mode?
+        MenuItems[m++] = MENU_CAL;                                              // - Sensorbox calibration
+    }
+    MenuItems[m++] = MENU_ACCESS;                                               // External Start/Stop button on I/O 2 (0:Disable / 1:Enable)
+    MenuItems[m++] = MENU_RCMON;                                                // Residual Current Monitor on I/O 3 (0:Disable / 1:Enable)
+    MenuItems[m] = MENU_EXIT;
+
+    return m;
+}
+
+unsigned char MenuNavChar (unsigned char Buttons, unsigned char Value, unsigned char Min, unsigned char Max) {
+    if (Buttons == 0x3) Value++;
+    if (Buttons == 0x6) Value--;
+    if (Value < Min) Value = Max;
+    if (Value > Max) Value = Min;
+    
+    return Value;
+}
+
+unsigned int MenuNavInt (unsigned char Buttons, unsigned int Value, unsigned int Min, unsigned int Max) {
+    if (Buttons == 0x3) Value++;
+    if (Buttons == 0x6) Value--;
+    if (Value < Min) Value = Max;
+    if (Value > Max) Value = Min;
+    
+    return Value;
+}
+
 // uses buffer
 void GLCDHelp(void)                                                             // Display/Scroll helptext on LCD 
 {
     unsigned int x;
 
-    switch (LCDNav) {
+    getMenuItems();
+    
+    switch (MenuItems[LCDNav]) {
         case MENU_CONFIG:
             x = strlen(MenuConfig);
             GLCD_print_row(MenuConfig + LCDpos);
@@ -578,6 +626,8 @@ void GLCDMenu(unsigned char Buttons) {
     static unsigned int CT1, CT1old;
     static double Iold;
 
+    unsigned char MenuItemsCount = getMenuItems();
+
     // Main Menu Navigation
     BacklightTimer = BACKLIGHT;                                                 // delay before LCD backlight turns off.
     BACKLIGHT_ON;                                                               // LCD backlight on	
@@ -593,214 +643,68 @@ void GLCDMenu(unsigned char Buttons) {
         ButtonTimer = Timer;
     } else if (LCDNav == 1 && ((ButtonTimer + 2000) < Timer))                   // <CONFIG>
     {
-        LCDNav = MENU_CONFIG;                                                   // Main Menu entered
+        LCDNav = 2;                                                             // Main Menu entered
         ButtonRelease = 1;
     } else if ((LCDNav == 1) && (Buttons == 0x7))                               // Button 2 released before entering menu?
     {
         LCDNav = 0;
         ButtonRelease = 0;
         GLCD();
-    } else if ((LCDNav == MENU_CAL) && (Buttons == 0x2) &&  SubMenu )           // Buttons 1> and 3< pressed ?
+    } else if ((MenuItems[LCDNav] == MENU_CAL) && (Buttons == 0x2) &&  SubMenu )// Buttons 1> and 3< pressed ?
     {                                                                           
         ICal = ICAL;                                                            // reset Calibration value (new 2.05)    
         SubMenu = 0;                                                            // Exit Submenu
         ButtonRelease = 1;
     }
-    else if ((LCDNav > 0) && ((LCDNav % 10) == 0) && (Buttons == 0x3) && (ButtonRelease == 0)) // Button 1 > pressed 
+    else if ((LCDNav > 1) && (Buttons == 0x2 || Buttons == 0x3 || Buttons == 0x6) && (ButtonRelease == 0))
     {
-        switch (LCDNav) {
-            case MENU_CONFIG:
-                if (SubMenu) {
-                    if (Config) Config = 0;
-                    else Config = 1;
-                }
-                else LCDNav = MENU_MODE;
-                break;
-            case MENU_MODE:
-                if (SubMenu) {
-                    if (Mode) Mode = 0;
-                    else Mode = 1;
-                }
-                else LCDNav = MENU_LOADBL;
-                break;
-            case MENU_LOADBL:
-                if (SubMenu) {
-                    if (LoadBl == 4) LoadBl = 0;                                // last menu item? goto first
-                    else LoadBl++;                                              // goto next
-                }
-                else {
-                    if (Mode || (LoadBl == 1)) LCDNav = MENU_MAINS;             // Smart Mode or Master?
-                    else LCDNav = MENU_MAX;
-                }
-                break;
-            case MENU_MAINS:
-                if (SubMenu) {
-                    MaxMains++;                                                 // Set new MaxMains
-                    if (MaxMains > 100) MaxMains = 100;                         // Max 100A
-                } else LCDNav = MENU_MAX;
-                break;
-            case MENU_MAX:
-                if (SubMenu) {
-                    MaxCurrent++;                                               // Set new MaxCurrent
-                    if (MaxCurrent > 80) MaxCurrent = 80;                       // Max 80A
-                } else {
-                    if (Mode || (LoadBl == 1)) LCDNav = MENU_MIN;               // Smart Mode or Master?
-                    else if (Config) LCDNav = MENU_CABLE;                       // Cable Configuration, go to Cable Current
-                    else LCDNav = MENU_LOCK;                                    // Fixed Cable, use the lock
-                }
-                break;
-            case MENU_MIN:
-                if (SubMenu) {
-                    MinCurrent++;                                               // Set new MinCurrent
-                    if (MinCurrent > 16) MinCurrent = 16;                       // Max 16A
-                } else {
-                    if (Config) LCDNav = MENU_CABLE;                            // Cable Configuration, go to Cable Current
-                    else LCDNav = MENU_LOCK;                                    // Fixed Cable, use the lock
-                }
-                break;
-            case MENU_LOCK:
-                if (SubMenu) {
-                    if (Lock == 2) Lock = 0;
-                    else Lock++;
+        if (SubMenu) {
+            switch (MenuItems[LCDNav]) {
+                case MENU_CONFIG:
+                    Config = MenuNavChar(Buttons, Config, 0, 1);
                     break;
-                }
-            case MENU_CABLE:
-                if (SubMenu) {
-                    CableLimit++;                                               // Set new CableLimit
-                    if (CableLimit > 80) CableLimit = 80;                       // Max 80A
-                } else {
-                    if (Mode) LCDNav = MENU_CAL;
-                    else LCDNav = MENU_ACCESS;
-                }
-                break;
-            case MENU_CAL:
-                if (SubMenu) {
-                    if (CT1 >= 60 && CT1 < 1000) CT1++;                         // Increase CT1 measurement value by 0.1A
-                                                                                // Max 99.9A
-                } else {
-                    LCDNav = MENU_ACCESS;
-                }
-                break;
-            case MENU_ACCESS:
-                if (SubMenu) {
-                    if (Access) Access = 0;
-                    else Access = 1;
-                } else {
-                    LCDNav = MENU_RCMON;
-                }
-                break;
-            case MENU_RCMON:
-                if (SubMenu) {
-                    if (RCmon) RCmon = 0;
-                    else RCmon = 1;
-                } else {
-                    LCDNav = MENU_EXIT;
-                }
-                break;
-
-            case MENU_EXIT:
-                LCDNav = MENU_CONFIG;
-            default:
-                break;
-        }
-        ButtonRelease = 1;
-    } else if ((LCDNav > 0) && ((LCDNav % 10) == 0) && (Buttons == 0x6) && (ButtonRelease == 0)) // Button 3 < pressed 
-    {
-        switch (LCDNav) {
-            case MENU_EXIT:
-                LCDNav = MENU_RCMON;
-                break;
-            case MENU_RCMON:
-                if (SubMenu) {
-                    if (RCmon) RCmon = 0;
-                    else RCmon = 1;
-                } else LCDNav = MENU_ACCESS;
-                break;
-            case MENU_ACCESS:
-                if (SubMenu) {
-                    if (Access) Access = 0;
-                    else Access = 1;
-                } else if (Mode) LCDNav = MENU_CAL;                             // Smart Mode? Goto Cal CT1
-                else if (Config) LCDNav = MENU_CABLE;                           // Cable Configuration, go to Cable Current
-                else LCDNav = MENU_LOCK;                                        // Fixed Cable, use the lock
-                break;
-            case MENU_CAL:
-                if (SubMenu) {
-                    if (CT1 > 60) CT1--;                                        // Min 6.0A
-                } else {
-                    if (Config) LCDNav = MENU_CABLE;                            // Cable Configuration, go to Cable Current
-                    else LCDNav = MENU_LOCK;                                    // Fixed Cable, use the lock
-                }
-                break;
-            case MENU_CABLE:
-                if (SubMenu) {
-                    CableLimit--;                                               // Set new CableLimit
-                    if (CableLimit < 13) CableLimit = 13;                       // Min 13A
+                case MENU_MODE:
+                    Mode = MenuNavChar(Buttons, Mode, 0, 1);
                     break;
-                }
-            case MENU_LOCK:
-                if (SubMenu) {
-                    if (Lock == 0) Lock = 2;
-                    else Lock--;
-                }
-                else {
-                    if (Mode || (LoadBl == 1)) LCDNav = MENU_MIN;               // Smart Mode or Master?
-                    else LCDNav = MENU_MAX;
-                }
-                break;
-            case MENU_MIN:
-                if (SubMenu) {
-                    MinCurrent--;                                               // Set new MinCurrent
-                    if (MinCurrent < 6) MinCurrent = 6;                         // Min 6A
-                } else LCDNav = MENU_MAX;
-                break;
-            case MENU_MAX:
-                if (SubMenu) {
-                    MaxCurrent--;                                               // Set new MaxCurrent
-                    if (MaxCurrent < 10) MaxCurrent = 10;                       // Min 10A
-                } else {
-                    if (Mode || (LoadBl == 1)) LCDNav = MENU_MAINS;             // Smart Mode or Master?
-                    else LCDNav = MENU_LOADBL;
-                }
-                break;
-            case MENU_MAINS:
-                if (SubMenu) {
-                    MaxMains--;                                                 // Set new MaxMains
-                    if (MaxMains < 10) MaxMains = 10;                           // Min 10A (version 2.03 changed from 16A)
-                } else LCDNav = MENU_LOADBL;
-                break;
-            case MENU_LOADBL:
-                if (SubMenu) {
-                    if (LoadBl == 0) LoadBl = 4;                                // first menu item? goto last
-                    else LoadBl--;                                              // goto previous
-                }
-                else LCDNav = MENU_MODE;
-                break;
-            case MENU_MODE:
-                if (SubMenu) {
-                    if (Mode) Mode = 0;
-                    else Mode = 1;
-                }
-                else LCDNav = MENU_CONFIG;
-                break;
-            case MENU_CONFIG:
-                if (SubMenu) {
-                    if (Config) Config = 0;
-                    else Config = 1;
-                }
-                else LCDNav = MENU_EXIT;
-                break;
-
-            default:
-                break;
+                case MENU_LOADBL:
+                    LoadBl = MenuNavChar(Buttons, LoadBl, 0, 4);
+                    break;
+                case MENU_MAINS:
+                    MaxMains = MenuNavInt(Buttons, MaxMains, 10, 100);
+                    break;
+                case MENU_MAX:
+                    MaxCurrent = MenuNavInt(Buttons, MaxCurrent, 10, 80);
+                    break;
+                case MENU_MIN:
+                    MinCurrent = MenuNavInt(Buttons, MinCurrent, 6, 16);
+                    break;
+                case MENU_LOCK:
+                    Lock = MenuNavChar(Buttons, Lock, 0, 2);
+                    break;
+                case MENU_CABLE:
+                    CableLimit = MenuNavChar(Buttons, CableLimit, 13, 80);
+                    break;
+                case MENU_CAL:
+                    CT1 = MenuNavInt(Buttons, CT1, 60, 1000);
+                    break;
+                case MENU_ACCESS:
+                    Access = MenuNavChar(Buttons, Access, 0, 1);
+                    break;
+                case MENU_RCMON:
+                    RCmon = MenuNavChar(Buttons, RCmon, 0, 1);
+                    break;
+            }
+        } else {
+            LCDNav = MenuNavChar(Buttons, LCDNav, 2, MenuItemsCount);
         }
+        
         ButtonRelease = 1;
-    }  else if (LCDNav >= 10 && Buttons == 0x5 && ButtonRelease == 0)            // Button 2 pressed?
+    }  else if (LCDNav > 1 && Buttons == 0x5 && ButtonRelease == 0)             // Button 2 pressed?
     {
         if (SubMenu)                                                            // Are we in Submenu?
         {
             SubMenu = 0;                                                        // yes, exit Submenu
-            if (LCDNav == MENU_CAL)                                             // Exit CT1 calibration?
+            if (MenuItems[LCDNav] == MENU_CAL)                                             // Exit CT1 calibration?
             {
                 if (CT1 != CT1old)                                              // did the value change?
                 {
@@ -812,11 +716,11 @@ void GLCDMenu(unsigned char Buttons) {
         } else                                                                  // We are curently not in Submenu.
         {
             SubMenu = 1;                                                        // Enter Submenu now
-            if (LCDNav == MENU_CAL)                                             // CT1 calibration start
+            if (MenuItems[LCDNav] == MENU_CAL)                                             // CT1 calibration start
             {
                 CT1 = (unsigned int) Irms[0];                                   // make working copy of CT1 value
                 CT1old = CT1;                                                   // and a backup
-            } else if (LCDNav == MENU_EXIT)                                     // Exit Main Menu
+            } else if (MenuItems[LCDNav] == MENU_EXIT)                                     // Exit Main Menu
             {
                 LCDNav = 0;
                 SubMenu = 0;
@@ -846,39 +750,39 @@ void GLCDMenu(unsigned char Buttons) {
             glcd_clrln(6, 0x10);                                                // horizontal line
             glcd_clrln(7, 0x00);
 
-        } else if (LCDNav == MENU_CONFIG) {
+        } else if (MenuItems[LCDNav] == MENU_CONFIG) {
             GLCD_print_menu(StrConfig, 2);                                      // add navigation arrows on both sides
             if (Config) GLCD_print_menu(StrFixed, 4);                           // add spaces on both sides
             else GLCD_print_menu(StrSocket, 4);
-        } else if (LCDNav == MENU_MODE) {
+        } else if (MenuItems[LCDNav] == MENU_MODE) {
             GLCD_print_menu(StrMode, 2);
             if (Mode) GLCD_print_menu(StrSmart, 4);
             else GLCD_print_menu(StrNormal, 4);
-        } else if (LCDNav == MENU_LOADBL) {
+        } else if (MenuItems[LCDNav] == MENU_LOADBL) {
             GLCD_print_menu(StrLoadBl, 2);
             if (LoadBl == 0) GLCD_print_menu(StrDisabled, 4);
             else if (LoadBl == 1) GLCD_print_menu(StrMaster, 4);
             else if (LoadBl == 2) GLCD_print_menu(StrSlave1, 4);
             else if (LoadBl == 3) GLCD_print_menu(StrSlave2, 4);
             else GLCD_print_menu(StrSlave3, 4);
-        } else if (LCDNav == MENU_MAINS) {
+        } else if (MenuItems[LCDNav] == MENU_MAINS) {
             GLCD_print_menu(StrMains, 2);
             GLCD_print_Amps(MaxMains);
-        } else if (LCDNav == MENU_MAX) {
+        } else if (MenuItems[LCDNav] == MENU_MAX) {
             GLCD_print_menu(StrMax, 2);
             GLCD_print_Amps(MaxCurrent);
-        } else if (LCDNav == MENU_MIN) {
+        } else if (MenuItems[LCDNav] == MENU_MIN) {
             GLCD_print_menu(StrMin, 2);
             GLCD_print_Amps(MinCurrent);
-        } else if (LCDNav == MENU_LOCK) {
+        } else if (MenuItems[LCDNav] == MENU_LOCK) {
             GLCD_print_menu(StrLock, 2);
             if (Lock == 1) GLCD_print_menu(StrSolenoid, 4);
             else if (Lock == 2) GLCD_print_menu(StrMotor, 4);
             else GLCD_print_menu(StrDisabled, 4);
-        } else if (LCDNav == MENU_CABLE) {
+        } else if (MenuItems[LCDNav] == MENU_CABLE) {
             GLCD_print_menu(StrCable, 2);
             GLCD_print_Amps(CableLimit);
-        } else if (LCDNav == MENU_CAL) {                                        // CT Calibration menu
+        } else if (MenuItems[LCDNav] == MENU_CAL) {                             // CT Calibration menu
             GLCD_print_menu(StrCal, 2);
 
             GLCD_buffer_clr();                                                  // Clear buffer
@@ -900,15 +804,15 @@ void GLCDMenu(unsigned char Buttons) {
             GLCD_write_buf2('A');
             GLCD_sendbuf(4);                                                    // copy buffer to LCD
 
-        } else if (LCDNav == MENU_ACCESS) {
+        } else if (MenuItems[LCDNav] == MENU_ACCESS) {
             GLCD_print_menu(StrAccess, 2);
             if (Access) GLCD_print_menu(StrSwitch, 4);
             else GLCD_print_menu(StrDisabled, 4);
-        } else if (LCDNav == MENU_RCMON) {
+        } else if (MenuItems[LCDNav] == MENU_RCMON) {
             GLCD_print_menu(StrRcmon, 2);
             if (RCmon) GLCD_print_menu(StrEnabled, 4);
             else GLCD_print_menu(StrDisabled, 4);
-        } else if (LCDNav == MENU_EXIT) {
+        } else if (MenuItems[LCDNav] == MENU_EXIT) {
             GLCD_print_menu(StrExit, 2);
             GLCD_print_menu(StrExitMenu, 4);
         }

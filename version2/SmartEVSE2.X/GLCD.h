@@ -40,7 +40,9 @@ void glcd_clrln(unsigned char ln,unsigned char data);
 void GLCD_sendbuf(unsigned char RowAdr);
 void GLCD_buffer_clr(void);
 
-
+extern unsigned char getMenu (void);
+extern unsigned char MenuNavChar(unsigned char Buttons, unsigned char Value, unsigned char Min, unsigned char Max);
+extern unsigned int MenuNavInt(unsigned char Buttons, unsigned int Value, unsigned int Min, unsigned int Max);
 extern void GLCDHelp(void);
 extern void GLCD(void);
 extern void GLCDMenu(unsigned char Buttons);

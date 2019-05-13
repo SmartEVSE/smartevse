@@ -1219,7 +1219,7 @@ void main(void) {
 
         if ((ButtonState != 0x07) || (ButtonState != OldButtonState)) GLCDMenu(ButtonState); // Any button pressed or just released?
 
-        if (LCDNav && (ScrollTimer + 5000 < Timer) && (!SubMenu)) GLCDHelp();   // Update/Show Helpmenu
+        if (LCDNav > 1 && (ScrollTimer + 5000 < Timer) && (!SubMenu)) GLCDHelp();   // Update/Show Helpmenu
 
 
         if (PORTBbits.RB2 == 0)                                                 // Switch input pulled low?
