@@ -508,8 +508,14 @@ void GLCD(void) {
         GLCD_buffer_clr();                                                      // Clear buffer
         for (x = 0; x < 3; x++) {
             GLCDx = 4 + 12 + x * (12 * 3);                                      // calc offset
-            GLCD_write_buf2((unsigned int) (Irms[x] / 100) + 0x30);
-            GLCD_write_buf2(((unsigned int) (Irms[x] / 10) % 10) + 0x30);
+            // Modbus / Legacy
+            if (Modbus) {
+				GLCD_write_buf2((unsigned int) (Irms[x] / 10) + 0x30);
+				GLCD_write_buf2((unsigned int) Irms[x] %10 + 0x30);
+            } else {
+                GLCD_write_buf2((unsigned int) (Irms[x] / 100) + 0x30);
+                GLCD_write_buf2(((unsigned int) (Irms[x] / 10) % 10) + 0x30);
+            }
         }
         GLCD_sendbuf(4);                                                        // copy buffer to LCD
     } else if ((State == STATE_A) || (State == STATE_B)) {
@@ -806,7 +812,12 @@ void GLCDMenu(unsigned char Buttons) {
                 {
                     Iold = (double) (CT1old / ICal);
                     ICal = (double) (CT1 / Iold);                               // Calculate new Calibration value
-                    Irms[0] = CT1;                                              // Set the Irms value, so the LCD update is instant
+                    // Modbus / Legacy
+                    if (Modbus) {
+                        Irms[0] = (double) CT1 / 10;
+                    } else {
+                        Irms[0] = CT1;                                          // Set the Irms value, so the LCD update is instant
+                    }
                 }
             }
         } else                                                                  // We are curently not in Submenu.
@@ -814,7 +825,12 @@ void GLCDMenu(unsigned char Buttons) {
             SubMenu = 1;                                                        // Enter Submenu now
             if (LCDNav == MENU_CAL)                                             // CT1 calibration start
             {
-                CT1 = (unsigned int) Irms[0];                                   // make working copy of CT1 value
+                // Modbus / Legacy
+                if (Modbus) {
+                    CT1 = (unsigned int) (Irms[0] * 10);                        // make working copy of CT1 value
+                } else {
+                    CT1 = (unsigned int) Irms[0];                               // make working copy of CT1 value
+                }
                 CT1old = CT1;                                                   // and a backup
             } else if (LCDNav == MENU_EXIT)                                     // Exit Main Menu
             {
@@ -891,10 +907,18 @@ void GLCDMenu(unsigned char Buttons) {
                 GLCD_write_buf2((CT1 % 10) + 0x30);
             } else {
                 GLCDx = 4 + (12 * 3);
-                GLCD_write_buf2(((unsigned int) Irms[0] / 100) + 0x30);
-                GLCD_write_buf2(((unsigned int) Irms[0] % 100 / 10) + 0x30);
-                GLCD_write_buf2('.');
-                GLCD_write_buf2(((unsigned int) Irms[0] % 10) + 0x30);
+                // Modbus / Legacy
+                if (Modbus) {
+                    GLCD_write_buf2(((unsigned int) Irms[0] / 10) + 0x30);
+                    GLCD_write_buf2(((unsigned int) Irms[0] % 10) + 0x30);
+                    GLCD_write_buf2('.');
+                    GLCD_write_buf2(((unsigned int)(Irms[0] * 10) % 10) + 0x30);                 
+                } else {
+                    GLCD_write_buf2(((unsigned int) Irms[0] / 100) + 0x30);
+                    GLCD_write_buf2(((unsigned int) Irms[0] % 100 / 10) + 0x30);
+                    GLCD_write_buf2('.');
+                    GLCD_write_buf2(((unsigned int) Irms[0] % 10) + 0x30);
+                }
             }
             GLCDx = 4 + (12 * 7);
             GLCD_write_buf2('A');

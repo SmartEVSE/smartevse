@@ -100,6 +100,9 @@
 #define MENU_ACCESS 110
 #define MENU_RCMON 120
 
+#define EM_SENSORBOX 3
+#define EM_PHOENIX_CONTACT 10
+#define EM_FINDER 20
 
 #ifdef DEBUG_P
 #define DEBUG_PRINT(x) printf x
@@ -127,20 +130,27 @@ extern char Config;                                                             
 extern char LoadBl;                                                             // Load Balance Setting (Disable, Master or Slave)
 extern char Access;                                                             // Allow access to EVSE with button on IO2
 extern char RCmon;                                                              // Residual Current monitor
+extern unsigned char Modbus;                                                    // Modbus (0:Disabled / 1:Enabled)
+extern unsigned char MainsMeter;                                                // Type of Mains electric meter (0: Disabled / 3: sensorbox v2 / 10: Phoenix Contact)
+extern unsigned char MainsMeterAddress;
+extern unsigned char PVMeter;                                                   // Type of PV electric meter (0: Disabled / 10: Phoenix Contact)
+extern unsigned char PVMeterAddress;
+extern unsigned char EVSEMeter;                                                 // Type of EVSE electric meter (0: Disabled / 10: Phoenix Contact)
+extern unsigned char EVSEMeterAddress;
 
 
 #define EEPROM_BYTES 19                                                         // total 19 bytes
 
 
-extern double Irms[3];                                                          // Momentary current per Phase (Amps *10) (23= 2.3A)
-                                                                                // Max 4 phases supported
+extern double Irms[3];                                                          // Momentary current per Phase (Amps) (25.3A) (Legacy: Amps *10)
+
 extern unsigned int crc16;
 extern unsigned char State;
 extern unsigned char Error;
 extern unsigned char NextState;
 
 extern unsigned int MaxCapacity;                                                // Cable limit (Amps)(limited by the wire in the charge cable, set automatically, or manually if Config=Fixed Cable)
-extern unsigned int Imeasured;                                                  // Max of all CT inputs (Amps *10)
+extern unsigned int Imeasured;                                                  // Max of all CT inputs (Amps) (Legacy: Amps *10)
 extern int Balanced[4];                                                         // Amps value per EVSE (max 4)
 
 extern unsigned char RX1byte;

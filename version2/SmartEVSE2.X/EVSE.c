@@ -102,19 +102,24 @@ char    GLCDbuf[256];                                                           
 
 
 // The following data will be updated by eeprom data at powerup:
-unsigned int MaxMains;                                                          // Max Mains Amps (hard limit, limited by the MAINS connection)
-unsigned int MaxCurrent;                                                        // Max Charge current
-unsigned int MinCurrent;                                                        // Minimal current the EV is happy with
+unsigned int MaxMains;                                                          // Max Mains Amps (hard limit, limited by the MAINS connection) (A)
+unsigned int MaxCurrent;                                                        // Max Charge current (A)
+unsigned int MinCurrent;                                                        // Minimal current the EV is happy with (A)
 double ICal;                                                                    // CT calibration value
-char Mode;                                                                      // EVSE mode
-char Lock;                                                                      // Cable lock enable/disable
-unsigned int CableLimit;                                                        // Fixed Cable Current limit (only used when config is set to Fixed Cable)
-char Config;                                                                    // Configuration (Fixed Cable or Type 2 Socket)
-char LoadBl;                                                                    // Load Balance Setting (Disable, Master or Slave1-3)
-char Access;                                                                    // External Start/Stop button on I/O 2
-char RCmon;                                                                     // Residual Current Monitor on I/O 3
-
-// total 17 bytes
+char Mode;                                                                      // EVSE mode (0:Normal / 1:Smart)
+char Lock;                                                                      // Cable lock (0:Disable / 1:Solenoid / 2:Motor)
+unsigned int CableLimit;                                                        // Fixed Cable Current limit (only used when config is set to Fixed Cable) (A)
+char Config;                                                                    // Configuration (0:Socket / 1:Fixed Cable)
+char LoadBl;                                                                    // Load Balance Setting (0:Disable / 1:Master / 2-4:Slave)
+char Access;                                                                    // External Start/Stop button on I/O 2 (0:Disable / 1:Enable)
+char RCmon;                                                                     // Residual Current Monitor on I/O 3 (0:Disable / 1:Enable)
+unsigned char Modbus = 0;                                                       // Modbus (0:Disabled / 1:Enabled)
+unsigned char MainsMeter;                                                       // Type of Mains electric meter (0: Disabled / 3: sensorbox v2 / 10: Phoenix Contact)
+unsigned char MainsMeterAddress;
+unsigned char PVMeter;                                                          // Type of PV electric meter (0: Disabled / 10: Phoenix Contact)
+unsigned char PVMeterAddress;
+unsigned char EVSEMeter;                                                        // Type of EVSE electric meter (0: Disabled / 10: Phoenix Contact)
+unsigned char EVSEMeterAddress;
 
 double Irms[3]={0,0,0};                                                         // Momentary current per Phase (Amps *10) (23= 2.3A)
                                                                                 // Max 3 phases supported
@@ -134,10 +139,11 @@ int BalancedMax[4]={0,0,0,0};                                                   
 char BalancedState[4]={0,0,0,0};                                                // State of all EVSE's 0=not active (state A), 1=charge request (State B), 2= Charging (State C) 
 
 unsigned char RX1byte, TX1byte;
-unsigned char idx=0,idx2=0,ISRFLAG=0,ISR2FLAG=0,ISRTXFLAG=0;
+unsigned char idx=0,idx2=0,ISRFLAG=0,ISR2FLAG=0,ISRTXFLAG=0,ISRTXLEN=0;
 unsigned char menu=0;
 unsigned int locktimer=0,unlocktimer=0;                                         // solenoid timers
 unsigned long Timer=0;                                                          // mS counter
+unsigned long ModbusTimer;
 unsigned char BacklightTimer=0;                                                 // Backlight timer (sec)
 unsigned int ChargeTimer=0;                                                     // Counts seconds in STATE C (Charging) (unused)
 unsigned char LCDTimer=0;
@@ -177,40 +183,62 @@ void interrupt high_isr(void)
     // Determine what caused the interrupt
     while (PIR1bits.RC1IF)                                                      // Uart1 receive interrupt? RS485
     {
-        RX1byte = RCREG1;                                                       // copy received byte	
-    // check for start/end of data packet byte, and max number of bytes in buffer 
-        if (idx == 50) idx--;
-        if (RX1byte == 0x7E)                                                    // max 50 bytes in buffer
-        {
-            if (idx > 7)                                                        // end of packet detected?
+        RX1byte = RCREG1;                                                       // copy received byte
+        // Modbus / Legacy
+        if (Modbus) {
+            if (Timer > (ModbusTimer + 3))                                      // last reception more then 3ms ago? 
             {
-                ISRFLAG = idx;                                                  // flag complete packet for main routine
-            }
-            idx = 0;                                                            // reset index
-        } else if (RX1byte == 0x7D)                                             // escape character found?
-        {
-            ISRFLAG = 1;                                                        // yes, mark next byte
-        } else                                                                  // normal characters
-        {
-            if (ISRFLAG == 1)                                                   // was previous byte a escape character?
+                 idx = 0;                                                       // also clear idx in RS485 RX handler
+                 ISRFLAG = 1;                                                   // it's the start of new data packet
+            }  
+            if (idx == 50) idx--;                                               // max 50 bytes in buffer
+            U1buffer[idx++] = RX1byte;                                          // Store received byte in buffer
+
+            ModbusTimer = Timer;            
+        } else {
+            if (idx == 50) idx--;
+            if (RX1byte == 0x7E)                                                // max 50 bytes in buffer
             {
-                ISRFLAG = 0;
-                RX1byte = 0x20 ^ RX1byte;
+                if (idx > 7)                                                    // end of packet detected?
+                {
+                    ISRFLAG = idx;                                              // flag complete packet for main routine
+                }
+                idx = 0;                                                        // reset index
+            } else if (RX1byte == 0x7D)                                         // escape character found?
+            {
+                ISRFLAG = 1;                                                    // yes, mark next byte
+            } else                                                              // normal characters
+            {
+                if (ISRFLAG == 1)                                               // was previous byte a escape character?
+                {
+                    ISRFLAG = 0;
+                    RX1byte = 0x20 ^ RX1byte;
+                }
+                U1buffer[idx++] = RX1byte;
             }
-            U1buffer[idx++] = RX1byte;
         }
     }
 
     if (PIR1bits.TX1IF && PIE1bits.TX1IE)                                       // Uart1 transmit interrupt? RS485
     {
-        TX1byte = U1TXbuffer[ISRTXFLAG];
-        TXREG1 = TX1byte;                                                       // send character
-        if ((ISRTXFLAG && TX1byte == 0x7E) || ISRTXFLAG == 49)                  // end of buffer
-        {
-            PIE1bits.TX1IE = 0;                                                 // clear transmit Interrupt for RS485 after sending last character
-            ISRTXFLAG = 0;                                                      // end of transmission.
-            // we switch of the transmitter in the main loop, after the final character has been sent..
-        } else ISRTXFLAG++;
+        // Modbus / Legacy
+        if (Modbus) {
+            TXREG1 = U1TXbuffer[ISRTXFLAG++];                                   // send character
+            if ((ISRTXFLAG == ISRTXLEN)|| ISRTXFLAG == 50)                      // end of buffer
+            {
+                PIE1bits.TX1IE = 0;                                             // clear transmit Interrupt for RS485 after sending last character
+                ISRTXFLAG = 0;                                                  // end of transmission.
+            }                                                                    // we switch off the transmitter in the main loop, after the final character has been sent..
+        } else {
+            TX1byte = U1TXbuffer[ISRTXFLAG];
+            TXREG1 = TX1byte;                                                   // send character
+            if ((ISRTXFLAG && TX1byte == 0x7E) || ISRTXFLAG == 49)              // end of buffer
+            {
+                PIE1bits.TX1IE = 0;                                             // clear transmit Interrupt for RS485 after sending last character
+                ISRTXFLAG = 0;                                                  // end of transmission.
+                // we switch of the transmitter in the main loop, after the final character has been sent..
+            } else ISRTXFLAG++;
+        }
     }
 
     // Uart2 receive interrupt?
@@ -356,24 +384,43 @@ unsigned char ease8InOutQuad(unsigned char i) {
 }
 
 
-
 // calculates 16-bit CRC of given data
 // used for Frame Check Sequence on data frame
-// Poly used is x^16+x^12+x^5+x
+unsigned int calc_crc16(unsigned char *buf, unsigned int len) {
+    unsigned int crc = 0xffff;
+    
+    // Modbus / Legacy
+    if (Modbus) {
+        // Poly used is x^16+x^15+x^2+x
+        for (int pos = 0; pos < len; pos++)
+        {
+            crc ^= (unsigned int)buf[pos];                                          // XOR byte into least sig. byte of crc
 
-unsigned int calc_crc16(char* start, char len) {
-    unsigned int crc = 0xffff, c;
-    int i;
-    while (len--) {
-        c = *start;
-        for (i = 0; i < 8; i++) {
-            if ((crc ^ c) & 1) crc = (crc >> 1)^0x8408;
-            else crc >>= 1;
-            c >>= 1;
+            for (int i = 8; i != 0; i--) {                                          // Loop over each bit
+                if ((crc & 0x0001) != 0) {                                          // If the LSB is set
+                    crc >>= 1;                                                      // Shift right and XOR 0xA001
+                    crc ^= 0xA001;
+                }
+                else                                                                // Else LSB is not set
+                    crc >>= 1;                                                      // Just shift right
+            }
+        }        
+    } else {
+        // Poly used is x^16+x^12+x^5+x
+        unsigned int c;
+        int i;
+        while (len--) {
+            c = *buf;
+            for (i = 0; i < 8; i++) {
+                if ((crc ^ c) & 1) crc = (crc >> 1)^0x8408;
+                else crc >>= 1;
+                c >>= 1;
+            }
+            buf++;
         }
-        start++;
+        crc = (unsigned int) (crc ^ 0xFFFF);
     }
-    crc = (unsigned int) (crc ^ 0xFFFF);
+
     return (crc);
 }
 
@@ -469,7 +516,7 @@ void putch(unsigned char byte)                                                  
 }
 
 
-// Create HDLC frame from data, and copy to output buffer
+// Create HDLC/modbus frame from data, and copy to output buffer
 // Start RS485 transmission, by enabling TX interrupt
 
 void RS485SendBuf(char* buffer, unsigned char len) {
@@ -479,23 +526,37 @@ void RS485SendBuf(char* buffer, unsigned char len) {
     while (ISRTXFLAG) {
     }                                                                           // wait if we are still transmitting over RS485
 
-    U1TXbuffer[index++] = 0x7E;                                                 // copy sync flag to output buffer
-    while (len--) {
-        ch = *buffer++;                                                         // load next byte
-        if ((ch == 0x11) || (ch == 0x12) || (ch == 0x13) || (ch == 0x7E) || (ch == 0x7D)) // check for escape character
+    // Modbus / Legacy
+    if (Modbus) {
+        while (ISRTXFLAG) {}                                                    // wait if we are already transmitting on the RS485 bus
+        ISRTXLEN = len;                                                         // number of bytes to transfer
+        
+        while(len--)			
         {
-            ch = ch^0x20;
-            U1TXbuffer[index++] = 0x7D;                                         // copy escape character
+    		U1TXbuffer[index++] = *buffer++;                                    // load next byte
         }
-        U1TXbuffer[index++] = ch;                                               // copy data to buffer
+        tmr=Timer+1000;	
+        while ((Timer<(ModbusTimer+4)) && (tmr>Timer)) {}                       // if there is a RS485 reception, wait for it to finish, with 1000ms timeout       
+    } else {
+        U1TXbuffer[index++] = 0x7E;                                             // copy sync flag to output buffer
+        while (len--) {
+            ch = *buffer++;                                                     // load next byte
+            if ((ch == 0x11) || (ch == 0x12) || (ch == 0x13) || (ch == 0x7E) || (ch == 0x7D)) // check for escape character
+            {
+                ch = ch^0x20;
+                U1TXbuffer[index++] = 0x7D;                                     // copy escape character
+            }
+            U1TXbuffer[index++] = ch;                                           // copy data to buffer
+        }
+        U1TXbuffer[index++] = 0x7E;                                             // copy sync flag
+
+        tmr = Timer + 1000;
+        while (idx && (tmr > Timer)) {
+        }                                                                           // wait for RS485 reception to finish, with 1000ms timeout
     }
-    U1TXbuffer[index++] = 0x7E;                                                 // copy sync flag
-
-    tmr = Timer + 1000;
-    while (idx && (tmr > Timer)) {
-    }                                                                           // wait for RS485 reception to finish, with 1000ms timeout
-
+    
     LATBbits.LATB5 = 1;                                                         // set RS485 transceiver to transmit
+    delay(1);
     PIE1bits.TX1IE = 1;                                                         // enable transmit Interrupt for RS485
 }
 
@@ -650,6 +711,7 @@ void CalcBalancedCurrent(char mod) {
         if (Idifference > 0) IsetBalanced += (Idifference / 4);                 // increase with 1/4th of difference (slowly increase current)
         else IsetBalanced += Idifference;                                       // last PWM setting + difference (immediately decrease current)
         if (IsetBalanced < 0) IsetBalanced = 0;
+        if (IsetBalanced > 800) IsetBalanced = 800;                             // hard limit 80A (added 11-11-2017)
     }
 
     Baseload = Imeasured - (TotalCurrent * 10);                                 // Calculate Baseload (load without any active EVSE)
@@ -720,18 +782,26 @@ void CalcBalancedCurrent(char mod) {
 
 void BroadcastCurrent(void) 
 {
-    char n, x;
-    unsigned int cs;
+    char x;
+    unsigned int n,cs;
 
-    Tbuffer[0] = 0xff;                                                          // Address Field = ff
-    Tbuffer[1] = 0x03;                                                          // Control Field = 03
-    Tbuffer[2] = 0x50;                                                          // Protocol = 0x5002
-    Tbuffer[3] = 0x02;
-    Tbuffer[4] = 0x01;                                                          // Version
-    Tbuffer[5] = 0x00;                                                          // Broadcast Address
-    Tbuffer[6] = 0x01;                                                          // Command
+    // Modbus / Legacy
+    if (Modbus) {
+		Tbuffer[0]= 0x09;                                                       // Broadcast Address
+		Tbuffer[1]= 0x01;                                                       // Command
+ 
+		n=2;
+    } else {
+        Tbuffer[0] = 0xff;                                                      // Address Field = ff
+        Tbuffer[1] = 0x03;                                                      // Control Field = 03
+        Tbuffer[2] = 0x50;                                                      // Protocol = 0x5002
+        Tbuffer[3] = 0x02;
+        Tbuffer[4] = 0x01;                                                      // Version
+        Tbuffer[5] = 0x00;                                                      // Broadcast Address
+        Tbuffer[6] = 0x01;                                                      // Command
 
-    n = 7;
+        n = 7;
+    }
     for (x = 1; x < 4; x++) {
         Tbuffer[n++] = 0x00;
         Tbuffer[n++] = Balanced[x];
@@ -740,7 +810,7 @@ void BroadcastCurrent(void)
     cs = calc_crc16(Tbuffer, n);                                                // calculate CRC16 from data			
     Tbuffer[n++] = ((unsigned char) (cs));
     Tbuffer[n++] = ((unsigned char) (cs >> 8));
-
+    // ToDo: Use RS485Send
     RS485SendBuf(Tbuffer, n);                                                   // send buffer to RS485 port
 }
 
@@ -748,22 +818,39 @@ void SendRS485(char address, char command, char data, char data2)               
 {
     unsigned int cs;
 
-    Tbuffer[0] = 0xff;                                                          // Address Field = ff
-    Tbuffer[1] = 0x03;                                                          // Control Field = 03
-    Tbuffer[2] = 0x50;                                                          // Protocol = 0x5002
-    Tbuffer[3] = 0x02;
-    Tbuffer[4] = 0x01;                                                          // Version
-    Tbuffer[5] = address;                                                       // Slave or Broadcast Address
-    Tbuffer[6] = command;                                                       // Command
+    // Modbus / Legacy
+    if (Modbus) {
+		Tbuffer[0]= address;                                                    // Slave or Broadcast Address
+		Tbuffer[1]= command;                                                    // Command/function
 
-    Tbuffer[7] = data;                                                          // only used in error command
-    Tbuffer[8] = data2;                                                         // charge current
+		Tbuffer[2] = data;                                                      // only used in error command
+		Tbuffer[3] = data2;                                                     // charge current
+		Tbuffer[4] = 0x00;                                                      // 
+		Tbuffer[5] = 0x00;                                                      // 
+											
+		cs = calc_crc16(Tbuffer, 6);                                            // calculate CRC16 from data			
+		Tbuffer[6] = ((unsigned char)(cs));
+		Tbuffer[7] =((unsigned char)(cs>>8));	
+
+		RS485SendBuf(Tbuffer,8);                                                // send buffer to RS485 port
+    } else {
+        Tbuffer[0] = 0xff;                                                      // Address Field = ff
+        Tbuffer[1] = 0x03;                                                      // Control Field = 03
+        Tbuffer[2] = 0x50;                                                      // Protocol = 0x5002
+        Tbuffer[3] = 0x02;
+        Tbuffer[4] = 0x01;                                                      // Version
+        Tbuffer[5] = address;                                                   // Slave or Broadcast Address
+        Tbuffer[6] = command;                                                   // Command
+
+        Tbuffer[7] = data;                                                      // only used in error command
+        Tbuffer[8] = data2;                                                     // charge current
                                                                                 // Frame Check Sequence (FCS) Field
-    cs = calc_crc16(Tbuffer, 9);                                                // calculate CRC16 from data			
-    Tbuffer[9] = ((unsigned char) (cs));
-    Tbuffer[10] = ((unsigned char) (cs >> 8));
+        cs = calc_crc16(Tbuffer, 9);                                            // calculate CRC16 from data			
+        Tbuffer[9] = ((unsigned char) (cs));
+        Tbuffer[10] = ((unsigned char) (cs >> 8));
 
-    RS485SendBuf(Tbuffer, 11);                                                  // send buffer to RS485 port
+        RS485SendBuf(Tbuffer, 11);                                              // send buffer to RS485 port
+    }
 }
 
 
@@ -797,7 +884,7 @@ void RS232cli(void)
         if ((strcmp(U2buffer, (const far char *) "MAINS") == 0) && (Mode || (LoadBl == 1))) menu = 1; // Switch to Set Max Mains Capacity (Smart mode or Master)
         if (strcmp(U2buffer, (const far char *) "MAX") == 0) menu = 2;          // Switch to Set Max Current
         if ((strcmp(U2buffer, (const far char *) "MIN") == 0) && (Mode || (LoadBl == 1))) menu = 3; // Switch to Set Min Current (Smart mode or Master)
-        if ((strcmp(U2buffer, (const far char *) "CAL") == 0) && Mode) menu = 4;// Switch to Calibrate CT1 (Smart mode)
+        if ((strcmp(U2buffer, (const far char *) "CAL") == 0) && Mode && (MainsMeter==3 || Modbus==0)) menu = 4;// Switch to Calibrate CT1 (Smart mode)
         if (strcmp(U2buffer, (const far char *) "MODE") == 0) menu = 5;         // Switch to Normal or Smart mode
         if ((strcmp(U2buffer, (const far char *) "LOCK") == 0) && !Config) menu = 6; // Switch to Enable/Disable Cable Lock (Config=Socket)
         if (strcmp(U2buffer, (const far char *) "CONFIG") == 0) menu = 7;       // Switch to Fixed cable or Type 2 Socket
@@ -828,7 +915,12 @@ void RS232cli(void)
             if ((Inew < 6) || (Inew > 80)) printf("\r\nError! please calibrate with atleast 6A\r\n");
             else {
                 Iold = Irms[0] / ICal;
-                ICal = (Inew * 10) / Iold;                                      // Calculate new Calibration value
+                // Modbus / Legacy
+                if (Modbus) {
+                    ICal = Inew / Iold;                                         // Calculate new Calibration value
+                } else {
+                    ICal = (Inew * 10) / Iold;                                  // Calculate new Calibration value
+                }
                 write_settings();                                               // Write to eeprom
             }
         } else if (menu == 5)                                                   // EVSE Mode
@@ -956,7 +1048,12 @@ void RS232cli(void)
             else if (Lock == 2) printf("Motor\r\n");
             else printf("Disabled\r\n");
         }
-        if (Mode) printf("CAL    - Calibrate CT1  (CT1:%3u.%01uA CT2:%3u.%01uA CT3:%3u.%01uA)\r\n", (unsigned int) Irms[0] / 10, (unsigned int) Irms[0] % 10, (unsigned int) Irms[1] / 10, (unsigned int) Irms[1] % 10, (unsigned int) Irms[2] / 10, (unsigned int) Irms[2] % 10);
+        // Modbus / Legacy
+        if (Modbus) {
+            if (Mode && MainsMeter==3) printf("CAL    - Calibrate CT1  (CT1:%3u.%01uA CT2:%3u.%01uA CT3:%3u.%01uA)\r\n",(unsigned int)Irms[0], (unsigned int)(Irms[0]*10)%10, (unsigned int)Irms[1], (unsigned int)(Irms[1]*10)%10, (unsigned int)Irms[2], (unsigned int)(Irms[2]*10)%10 );
+        } else {
+            if (Mode) printf("CAL    - Calibrate CT1  (CT1:%3u.%01uA CT2:%3u.%01uA CT3:%3u.%01uA)\r\n", (unsigned int) Irms[0] / 10, (unsigned int) Irms[0] % 10, (unsigned int) Irms[1] / 10, (unsigned int) Irms[1] % 10, (unsigned int) Irms[2] / 10, (unsigned int) Irms[2] % 10);
+        }
 
         printf(MenuAccess);
         printf("                    - ");                                       //Access control on IO2
@@ -981,7 +1078,12 @@ void RS232cli(void)
     else if (menu == 3) {
         printf("MIN Charge Current set to: %u A\r\nEnter new MIN Charge Current (6-16): ", MinCurrent);
     } else if (menu == 4) {
-        printf("CT1 reads: %3u.%01u A\r\nEnter new Measured Current for CT1: ", (unsigned int) Irms[0] / 10, (unsigned int) Irms[0] % 10);
+        // Modbus / Legacy
+        if (Modbus) {
+            printf("CT1 reads: %3u.%01u A\r\nEnter new Measured Current for CT1: ",(unsigned int)Irms[0], (unsigned int)(Irms[0]*10)%10);
+        } else {
+            printf("CT1 reads: %3u.%01u A\r\nEnter new Measured Current for CT1: ", (unsigned int) Irms[0] / 10, (unsigned int) Irms[0] % 10);
+        }
     } else if (menu == 5) {
         printf("EVSE set to : ");
         if (Mode) printf("Smart mode\r\n");
@@ -1124,15 +1226,20 @@ void init(void) {
     ANSELC = 0;                                                                 // All digital IO
     TRISC = 0b10000010;                                                         // RC1 and RC7 input (RX1), all other output
 
-    SPBRGH1 = 13;                                                               // Initialize UART 1 (RS485)
-    SPBRG1 = 4;                                                                 // Baudrate 1200 
+    // Modbus / Legacy
+    if (Modbus) {
+    	SPBRGH1 = 0x01;                                                         // Initialize UART 1 (RS485)
+        SPBRG1 = 0xA0;                                                          // Baudrate 9600 
+    } else {
+        SPBRGH1 = 13;                                                           // Initialize UART 1 (RS485)
+        SPBRG1 = 4;                                                             // Baudrate 1200 
+    }
     BAUDCON1 = 0b00001000;                                                      // 16 bit Baudrate register is used
     TXSTA1 = 0b00100100;                                                        // Enable TX, 8 bit, Asynchronous mode
     RCSTA1 = 0b10010000;                                                        // Enable serial port TX and RX, 8 bit. 
 
     SPBRGH2 = 0;                                                                // Initialize UART 2
     SPBRG2 = 34;                                                                // Baudrate 115k2 (114285)
-    //	SPBRG2 = 207;                                                           // Baudrate 19k2
     BAUDCON2 = 0b00001000;                                                      // 16 bit Baudrate register is used
     TXSTA2 = 0b00100100;                                                        // Enable TX, 8 bit, Asynchronous mode
     RCSTA2 = 0b10010000;                                                        // Enable serial port TX and RX, 8 bit. 
@@ -1179,10 +1286,11 @@ void init(void) {
 void main(void) {
     char *pBytes;
     char x, n;
-    unsigned char pilot, count = 0, timeout = 5;
+    unsigned char pilot, count = 0, timeout = 5, DataReceived = 0, ErrorReceived;
     char DiodeCheck = 0;
     char SlaveAdr, Command, Broadcast = 0, Switch_count = 0;
-    unsigned int Current;
+    unsigned int Current, crc16, crc16msg;
+    int BalancedReceived;
 
     init();                                                                     // initialize ports, ADC, UARTs etc
 
@@ -1196,7 +1304,6 @@ void main(void) {
 
     while (1)                                                                   // MAIN loop
     {
-
                 
         if (TestState) TestIO();                                                // TestMode. Test all I/O of Module
 
@@ -1528,6 +1635,22 @@ void main(void) {
             //			if (State==STATE_C) ChargeTimer=Timer/1000;	// Update ChargeTimer (unused)
             //			printf("STATE:%c Pilot:%u ChargeDelay:%u CT1:%3u.%01uA CT2:%3u.%01uA CT3:%3u.%01uA Imeas:%3u.%01uA Iset:%u.%01uA\r\n",State-1+'A',pilottest, ChargeDelay, (unsigned int)Irms[0]/10, (unsigned int)Irms[0]%10, (unsigned int)Irms[1]/10, (unsigned int)Irms[1]%10, (unsigned int)Irms[2]/10, (unsigned int)Irms[2]%10,(unsigned int)Imeasured/10,(unsigned int)Imeasured%10,(unsigned int)Iset/10,(unsigned int)Iset%10);
 
+            // Request measurement data data from sensorbox
+            if (Modbus && (Mode || LoadBl==1))                                  // Smart mode or Loadbalancing set to Master
+            {
+                Tbuffer[0]= 0x0A;                                               // sensorbox2 address
+                Tbuffer[1]= 0x04;                                               // function
+                Tbuffer[2]= 0;
+                Tbuffer[3]= 0;
+                Tbuffer[4]= 0;			
+                Tbuffer[5]= 0x0e;                                               // 14 words of data
+                unsigned int cs = calc_crc16(Tbuffer, 6);                       // calculate CRC16 from data
+                Tbuffer[6] = ((unsigned char)(cs));
+                Tbuffer[7] =((unsigned char)(cs>>8));
+                // ToDo: Use RS485Send
+                RS485SendBuf(Tbuffer,8);                                        // send buffer to RS485 port
+            }
+            
             if (!Mode)                                                          // Normal mode
             {
                 Imeasured = 0;                                                  // No measurements, so we set it to zero
@@ -1550,7 +1673,6 @@ void main(void) {
 
         /*  RS485 serial data is received by the ISR routine, and processed here..
             Reads serial packet with Raw Current values, measured from 1-N CT's, over a RS485 serial line
-            baudrate is 1200 bps
 
             packet structure from sensorbox: 	
             <protocol>,<version>,<nr of samples>,<sample 1>...<sample n>,<crc16>
@@ -1566,7 +1688,8 @@ void main(void) {
             protocol  0x5002		= load balancing commands
             version 	0x01
             adress		0x01		= slave 1 (communication always to/from master)
-                                    = broadcast from master = 0x00 
+                                    = broadcast from master = 0x00 (legacy)
+                                    = broadcast from master = 0x09 (modbus)
             command		0x02		= request to charge
             data	  0x0020		= @ 32A
             data	  0x0000		= unused data bytes
@@ -1589,66 +1712,138 @@ void main(void) {
                         0x02		= Error occurred, switch to State A. Error code in next databyte.
          */
 
-        if (ISRFLAG > 1)                                                        // complete packet detected?
-        {
-            crc16 = calc_crc16(U1buffer, ISRFLAG);
+        
+        // Receive data from modbus
+        // Modbus / Legacy
+        if (Modbus) {
+            if ( (ISRFLAG == 1) && (Timer>(ModbusTimer+3)) )     // last reception more then 3ms ago? ) 	// complete packet detected?
+            {
+                crc16 = calc_crc16(U1buffer, idx);                              // calculate checksum over all data (including crc16)
+                                                                                // when checksum == 0 data is ok.    
+                //for (x=0; x<idx; x++) printf("%02x ",U1buffer[x]);
+                if (U1buffer[0]==0x0a && U1buffer[1]==0x04 && !crc16)           // check CRC
+                {                                                               // We have received a data packet from the sensorbox v2
+                    n=19;                                                       // offset 19 is Irms[0]
 
-            if (ISRFLAG > 10 && U1buffer[2] == 0x50 && U1buffer[3] == 0x01 && crc16 == GOODFCS16) // check CRC
-            {                                                                   // We have received a data packet from the sensorbox
-                n = 6;
-                Imeasured = 0;                                                  // reset Imeasured value
-                if (U1buffer[5] > 3) U1buffer[5] = 3;                           // protect against buffer overflow
-                for (x = 0; x < U1buffer[5]; x++)                               // Nr of CTs    
-                {
-                    pBytes = (char*) &Irms[x];
-                    *pBytes++ = (unsigned char) U1buffer[n++];
-                    *pBytes++ = (unsigned char) U1buffer[n++];
-                    *pBytes++ = (unsigned char) U1buffer[n++];
-                    *pBytes = (unsigned char) U1buffer[n++];
-                    Irms[x] = Irms[x] * ICal;                                   // adjust CT values with Calibration value
-                    if (Irms[x] > Imeasured) Imeasured = (unsigned int) Irms[x]; // Imeasured holds highest Irms of all channels
-                }
-                if (U1buffer[4] == 0xA5 && !TestState) TestState = 1;           // TestIO command received, perform selfcheck (test interface required)
+                    Imeasured=0;                                                // reset Imeasured value
+                    MainsMeter = U1buffer[6];                                   // type of measurement stored
+                    for (x=0; x<3; x++)                                         // Nr of measurements
+                    {        
+                        pBytes = (char*)&Irms[x];
+                        *pBytes++=(unsigned char)U1buffer[n+3];
+                        *pBytes++=(unsigned char)U1buffer[n+2];
+                        *pBytes++=(unsigned char)U1buffer[n+1];
+                        *pBytes=(unsigned char)U1buffer[n];
+                        // When using CT's , adjust the measurements with calibration value
+                        if (MainsMeter == 3) Irms[x] = Irms[x] * ICal;	
 
-                if (Mode && LoadBl < 2)                                         // Load Balancing mode: Smart/Master or Disabled
-                {
-                    CalcBalancedCurrent(0);                                     // Calculate dynamic charge current for connected EVSE's
-
-                    if (NoCurrent > 2 || (Imeasured > (MaxMains * 20)))         // No current left, or Overload (2x Maxmains)?
-                    {                                                           // STOP charging for all EVSE's
-                        Error = NOCURRENT;                                      // Display error message
-                        for (x = 0; x < 4; x++) BalancedState[x] = 0;           // Set all EVSE's to State A
-
-                        SendRS485(0x00, 0x02, LESS_6A, ChargeDelay);            // Broadcast Error code over RS485
-                        NoCurrent = 0;
-                    } else if (LoadBl) BroadcastCurrent();                      // Master sends current to all connected EVSE's
-
-                    if ((State == STATE_B) || (State == STATE_C)) {
-                        SetCurrent(Balanced[0]);                                // Set current for Master EVSE in Smart Mode
+                        if (Irms[x] > Imeasured) Imeasured = Irms[x];           // Imeasured holds highest Irms of all channels
+                        n=n+4;
                     }
-                    //printf("STATE:%c ChargeDelay:%u NoCurrent:%u CT1:%3u.%01uA CT2:%3u.%01uA CT3:%3u.%01uA Imeas:%3u.%01uA IsetBalanced:%u.%01uA\r\n",State-1+'A', ChargeDelay, NoCurrent, (unsigned int)Irms[0]/10, (unsigned int)Irms[0]%10, (unsigned int)Irms[1]/10, (unsigned int)Irms[1]%10, (unsigned int)Irms[2]/10, (unsigned int)Irms[2]%10,(unsigned int)Imeasured/10,(unsigned int)Imeasured%10,(unsigned int)IsetBalanced/10,(unsigned int)IsetBalanced%10);
+
+                    DataReceived = 1;
+                } else if (ISRFLAG>6 && U1buffer[2]==0x50 && U1buffer[3]==0x02 && !crc16) 		// We received a command
+                {
+                    SlaveAdr = U1buffer[5];                                     //EVSE 0x01 - 0x03 (slaves) 
+                    Command = U1buffer[6];
+                    ErrorReceived = U1buffer[7];
+                    Current = U1buffer[8];
+
+                    timeout=10;
+
+                    if (SlaveAdr == 0x00 && Command == 0x01 && LoadBl > 1)      // Broadcast message from Master->Slaves, Set Charge current
+                    {
+                        BalancedReceived = U1buffer[4 + (LoadBl * 2)];
+                    }
+
+                    DataReceived = 2;
+                }
+                ISRFLAG = 0;                                                    // ready to receive new data
+                idx = 0;
+                if (Error == CT_NOCOMM && timeout==10) Error=NO_ERROR;			// Clear communication error, if present
+                if (Error == LESS_6A && ChargeDelay==0 && LoadBl>1) Error=NO_ERROR; // Clear Error after delay (Slave)                
+            } // (ISRFLAG > 1) 	 complete packet detected?
+        } else {
+            if (ISRFLAG > 1)                                                    // complete packet detected?
+            {
+                crc16 = calc_crc16(U1buffer, ISRFLAG);
+
+                if (ISRFLAG > 10 && U1buffer[2] == 0x50 && U1buffer[3] == 0x01 && crc16 == GOODFCS16) // check CRC
+                {                                                               // We have received a data packet from the sensorbox
+                    n = 6;
+                    Imeasured = 0;                                              // reset Imeasured value
+                    if (U1buffer[5] > 3) U1buffer[5] = 3;                       // protect against buffer overflow
+                    for (x = 0; x < U1buffer[5]; x++)                           // Nr of CTs    
+                    {
+                        pBytes = (char*) &Irms[x];
+                        *pBytes++ = (unsigned char) U1buffer[n++];
+                        *pBytes++ = (unsigned char) U1buffer[n++];
+                        *pBytes++ = (unsigned char) U1buffer[n++];
+                        *pBytes = (unsigned char) U1buffer[n++];
+                        Irms[x] = Irms[x] * ICal;                               // adjust CT values with Calibration value
+                        if (Irms[x] > Imeasured) Imeasured = (unsigned int) Irms[x]; // Imeasured holds highest Irms of all channels
+                    }
+                    if (U1buffer[4] == 0xA5 && !TestState) TestState = 1;       // TestIO command received, perform selfcheck (test interface required)
+                    
+                    DataReceived = 1;
+                } else if (ISRFLAG > 6 && U1buffer[2] == 0x50 && U1buffer[3] == 0x02 && crc16 == GOODFCS16) // We received a command
+                {
+                    SlaveAdr = U1buffer[5];                                     //EVSE 0x01 - 0x03 (slaves) 
+                    Command = U1buffer[6];
+                    ErrorReceived = U1buffer[7];
+                    Current = U1buffer[8];
 
                     timeout = 10;                                               // reset 10 second timeout
-                } else Imeasured = 0;                                           // In case Sensorbox is connected in Normal mode. Clear measurement.
 
-            } else if (ISRFLAG > 6 && U1buffer[2] == 0x50 && U1buffer[3] == 0x02 && crc16 == GOODFCS16) // We received a command
+                    if (SlaveAdr == 0x00 && Command == 0x01 && LoadBl > 1)      // Broadcast message from Master->Slaves, Set Charge current
+                    {
+                        BalancedReceived = U1buffer[4 + (LoadBl * 2)];
+                    }
+                    
+                    DataReceived = 2;
+                }
+                ISRFLAG = 0;                                                    // ready to receive new data
+                if (Error == CT_NOCOMM && timeout == 10) Error = NO_ERROR;      // Clear communication error, if present
+                if (Error == LESS_6A && ChargeDelay == 0 && LoadBl > 1)
+                    Error = NO_ERROR;                                           // Clear Error after delay (Slave)
+
+            } // (ISRFLAG > 1)            
+        }
+
+
+        // Process received data    
+        if (DataReceived == 1) {
+            if (Mode && LoadBl < 2)                                         // Load Balancing mode: Smart/Master or Disabled
             {
-                SlaveAdr = U1buffer[5];                                         //EVSE 0x01 - 0x03 (slaves) 
-                Command = U1buffer[6];
-                Current = U1buffer[8];
+                CalcBalancedCurrent(0);                                     // Calculate dynamic charge current for connected EVSE's
 
-                timeout = 10;                                                   // reset 10 second timeout
+                if (NoCurrent > 2 || (Imeasured > (MaxMains * 20)))         // No current left, or Overload (2x Maxmains)?
+                {                                                           // STOP charging for all EVSE's
+                    Error = NOCURRENT;                                      // Display error message
+                    for (x = 0; x < 4; x++) BalancedState[x] = 0;           // Set all EVSE's to State A
 
+                    SendRS485(0x00, 0x02, LESS_6A, ChargeDelay);            // Broadcast Error code over RS485
+                    NoCurrent = 0;
+                } else if (LoadBl) BroadcastCurrent();                      // Master sends current to all connected EVSE's
+
+                if ((State == STATE_B) || (State == STATE_C)) {
+                    SetCurrent(Balanced[0]);                                // Set current for Master EVSE in Smart Mode
+                }
+                //printf("STATE:%c ChargeDelay:%u NoCurrent:%u CT1:%3u.%01uA CT2:%3u.%01uA CT3:%3u.%01uA Imeas:%3u.%01uA IsetBalanced:%u.%01uA\r\n",State-1+'A', ChargeDelay, NoCurrent, (unsigned int)Irms[0]/10, (unsigned int)Irms[0]%10, (unsigned int)Irms[1]/10, (unsigned int)Irms[1]%10, (unsigned int)Irms[2]/10, (unsigned int)Irms[2]%10,(unsigned int)Imeasured/10,(unsigned int)Imeasured%10,(unsigned int)IsetBalanced/10,(unsigned int)IsetBalanced%10);
+
+                timeout = 10;                                               // reset 10 second timeout
+            } else Imeasured = 0;                                           // In case Sensorbox is connected in Normal mode. Clear measurement.
+        } else if (DataReceived == 2) {
                 if (SlaveAdr == 0x00 && Command == 0x01 && LoadBl > 1)          // Broadcast message from Master->Slaves, Set Charge current
                 {
-                    Balanced[0] = U1buffer[4 + (LoadBl * 2)];
+                    Balanced[0] = BalancedReceived;
                     if ((State == STATE_B) || (State == STATE_C)) SetCurrent(Balanced[0]); // Set charge current, and PWM output
                     DEBUG_PRINT(("Broadcast received, Slave %uA \r\n", Balanced[0]));
                 }
                 else if (SlaveAdr == 0x00 && Command == 0x02 && LoadBl > 1)     // Broadcast message from Master->Slaves, Error Occured!
                 {
                     State = STATE_A;
-                    Error = U1buffer[7];
+                    Error = ErrorReceived;
                     ChargeDelay = CHARGEDELAY;
                     DEBUG_PRINT(("Broadcast Error message received!\r\n"));
                 }
@@ -1739,13 +1934,5 @@ void main(void) {
                 } // commands for Master
 
             }
-            ISRFLAG = 0;                                                        // ready to receive new data
-            if (Error == CT_NOCOMM && timeout == 10) Error = NO_ERROR;          // Clear communication error, if present
-            if (Error == LESS_6A && ChargeDelay == 0 && LoadBl > 1)
-                Error = NO_ERROR;                                               // Clear Error after delay (Slave)
-
-        } // (ISRFLAG > 1)
-
-
     } // end of while(1) loop
 }
