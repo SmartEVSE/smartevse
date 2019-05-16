@@ -23,6 +23,7 @@
 ; THE SOFTWARE.
  */
 #include <xc.h>
+#include <stdlib.h>
 #include "EVSE.h"
 #include "GLCD.h"
 
@@ -282,7 +283,42 @@ const far unsigned char font[] = {
     0x00, 0x1F, 0x01, 0x01, 0x1E,
     0x00, 0x19, 0x1D, 0x17, 0x12,                                               // 0xFC ü (tbd)
     0x00, 0x3C, 0x3C, 0x3C, 0x3C,
-    0x00, 0x00, 0x00, 0x00, 0x00
+    0x08, 0x1C, 0x1C, 0x1C, 0x08                                                // 0xFE Energy blob
+};
+
+const unsigned char LCD_Flow [] = {
+    0x00, 0x00, 0x98, 0xCC, 0x66, 0x22, 0x22, 0x22, 0xF2, 0xAA, 0x26, 0x2A, 0xF2, 0x22, 0x22, 0x22,
+    0x66, 0xCC, 0x88, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0xC0, 0x60, 0x30, 0x18, 0x0C, 0x06, 0x03, 0x06, 0x0C,
+    0x19, 0x32, 0x64, 0xC8, 0x90, 0x20, 0x40, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x40, 0x61, 0x31, 0x18, 0x08, 0x08, 0x08, 0x08, 0xFF, 0x08, 0x8D, 0x4A, 0xFF, 0x08, 0x08, 0x08,
+    0x08, 0x18, 0x31, 0x61, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0xFC, 0x06, 0xF3, 0x11, 0x10, 0x10, 0x10, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x01, 0x03, 0x06, 0xFC, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x05, 0x88, 0x50, 0xFF, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0xFF, 0x00, 0x03, 0x02, 0x02, 0x02, 0x02, 0x03, 0x00, 0x00, 0x00, 0xF0, 0x10,
+    0x10, 0x10, 0x10, 0x10, 0xF0, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x80, 0x60, 0x10, 0x08, 0x04, 0x02, 0x82, 0x81, 0x81, 0x81, 0x01, 0x01, 0x01, 0x01,
+    0x01, 0x01, 0x01, 0x02, 0x02, 0x04, 0x84, 0x8C, 0x88, 0x88, 0x10, 0x10, 0x20, 0x40, 0x80, 0x00,
+    0x00, 0x00, 0x00, 0x40, 0x60, 0x30, 0x18, 0x0C, 0x07, 0x05, 0x04, 0x04, 0x07, 0x0C, 0x18, 0x30,
+    0x68, 0x48, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08,
+    0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08,
+    0x08, 0x08, 0x00, 0x7F, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x7F, 0x40,
+    0x40, 0x40, 0x42, 0x40, 0x7F, 0x40, 0x40, 0x7F, 0x00, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08,
+    0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08,
+    0x00, 0x06, 0x19, 0x10, 0x10, 0x1C, 0x02, 0x19, 0x24, 0x42, 0x42, 0x24, 0x19, 0x02, 0x1C, 0x10,
+    0x10, 0x10, 0x10, 0x1C, 0x02, 0x19, 0x24, 0x42, 0x42, 0x24, 0x19, 0x02, 0x1C, 0x10, 0x10, 0x1F
 };
 
 const far char StrConfig[]  = "CONFIG";
@@ -291,6 +327,7 @@ const far char StrFixed[]   = "Fixed";
 const far char StrSocket[]  = "Socket";
 const far char StrSmart[]   = "Smart";
 const far char StrNormal[]  = "Normal";
+const far char StrSolar[]   = "Solar";
 const far char StrMains[]   = "MAINS";
 const far char StrMax[]     = "MAX";
 const far char StrMin[]     = "MIN";
@@ -426,6 +463,14 @@ void GLCDHelp(void)                                                             
             x = strlen(MenuRCmon);
             GLCD_print_row(MenuRCmon + LCDpos);
             break;
+        case MENU_START:
+            x = strlen(MenuStart);
+            GLCD_print_row(MenuStart + LCDpos);
+            break;
+        case MENU_STOP:
+            x = strlen(MenuStop);
+            GLCD_print_row(MenuStop + LCDpos);
+            break;
 
         default:
             break;
@@ -444,6 +489,8 @@ void GLCDHelp(void)                                                             
 
 void GLCD(void) {
     unsigned char x;
+    static unsigned char energy_mains = 20; // X position
+    static unsigned char energy_ev = 74; // X position
 
     if (LCDNav) {
         if (LCDTimer++ == 120) {
@@ -455,21 +502,19 @@ void GLCD(void) {
     if (LCDTimer == 10) LCDTimer = 0;
 
     if (Error) {
-        BACKLIGHT_ON;                                                           // LCD backlight on
-        BacklightTimer = BACKLIGHT;                                             // reset backlight timer
-
-        if (Error == LESS_6A) {
-            GLCD_print2(2, (const far char *) "ERROR NO");
-            GLCD_print2(4, (const far char *) "CURRENT");
-        } else if (Error == CT_NOCOMM) {
+        BACKLIGHT_ON; // LCD backlight on
+        BacklightTimer = BACKLIGHT; // reset backlight timer
+        
+        if (Error & CT_NOCOMM) {
             GLCD_print2(0, (const far char *) "ERROR NO");
             GLCD_print2(2, (const far char *) "SERIAL COM");
             GLCD_print2(4, (const far char *) "CHECK");
             GLCD_print2(6, (const far char *) "WIRING");
-        } else if (Error == TEMP_HIGH) {
+            return;
+        } else if (Error & TEMP_HIGH) {
             GLCD_print2(2, (const far char *) "ERROR");
             GLCD_print2(4, (const far char *) "HIGH TEMP");
-        } else if (Error == RCD_TRIPPED) {
+        } else if (Error & RCD_TRIPPED) {
             if (LCDTimer++ < 5) {
                 GLCD_print2(0, (const far char *) "RESIDUAL");
                 GLCD_print2(2, (const far char *) "FAULT");
@@ -481,17 +526,17 @@ void GLCD(void) {
                 GLCD_print2(4, (const far char *) "TO");
                 GLCD_print2(6, (const far char *) "RESET");
             }
-        } else if (Error == Test_IO)                                            // Only used when testing the module
+            return;
+        } else if (Error & Test_IO) // Only used when testing the module
         {
             GLCD_print2(2, (const far char *) "IO Test");
             GLCD_print2(4, (const far char *) "FAILED!   ");
             GLCDx = 12 * 8 + 4;
             GLCD_write_buf2((TestState / 10) + 0x30);
             GLCD_write_buf2((TestState % 10) + 0x30);
-            GLCD_sendbuf(4);                                                    // copy buffer to LCD
+            GLCD_sendbuf(4); // copy buffer to LCD
+            return;
         }
-
-        return;
     }
 
     if (TestState == 80)                                                        // Only used when testing the module
@@ -501,64 +546,152 @@ void GLCD(void) {
         return;
     }
 
+    LCDTimer++;
 
-    if ((LCDTimer++ > 4) && Mode) {
-        GLCD_print2(2, (const far char *) "L1 L2 L3");
+                                                                                // MODE NORMAL
+    if (Mode == MODE_NORMAL) {
+        if (State == STATE_C) {                                                 // STATE C
+            GLCD_print2(2, (const far char *) "CHARGING");
 
-        GLCD_buffer_clr();                                                      // Clear buffer
-        for (x = 0; x < 3; x++) {
-            GLCDx = 4 + 12 + x * (12 * 3);                                      // calc offset
-            // Modbus / Legacy
-            if (Modbus) {
-				GLCD_write_buf2((unsigned int) (Irms[x] / 10) + 0x30);
-				GLCD_write_buf2((unsigned int) Irms[x] %10 + 0x30);
+            GLCDx = 4 + 30;
+
+            GLCD_buffer_clr(); // Clear buffer
+            GLCD_write_buf2((Balanced[0] / 100) + 0x30);
+            GLCD_write_buf2(((Balanced[0] / 10) % 10) + 0x30);
+            GLCD_write_buf2('.');
+            GLCD_write_buf2((Balanced[0] % 10) + 0x30);
+            GLCD_write_buf2('A');
+            GLCD_sendbuf(4); // copy buffer to LCD
+        } else                                                                  
+        {                                                                       // STATE A and STATE B
+            glcd_clrln(0, 0x00);
+            glcd_clrln(1, 0x04); // horizontal line
+
+            if (Access_bit || Access == 0) {
+                GLCD_print2(2, (const far char *) "READY TO");
+                GLCD_print2(4, (const far char *) "CHARGE  ");
             } else {
-                GLCD_write_buf2((unsigned int) (Irms[x] / 100) + 0x30);
-                GLCD_write_buf2(((unsigned int) (Irms[x] / 10) % 10) + 0x30);
+                GLCD_print2(2, (const far char *) "ACCESS");
+                GLCD_print2(4, (const far char *) "DENIED");
+            }
+            glcd_clrln(6, 0x10); // horizontal line
+            glcd_clrln(7, 0x00);
+
+        }
+    }                                                                           // MODE SMART or SOLAR
+    else if ((Mode == MODE_SMART) || (Mode == MODE_SOLAR)) {
+        
+        GLCD_Flow_buf();                                                        // copy Flow Menu to LCD buffer
+          
+        if (Isum < 0) {
+            energy_mains -= 3;                                                  // animate the flow of Mains energy on LCD.
+            if (energy_mains < 20) energy_mains = 44;                           // Only in Mode: Smart or Solar
+        } else {
+            energy_mains += 3;
+            if (energy_mains > 44) energy_mains = 20;
+        }
+
+        GLCDx = energy_mains;
+        GLCDy = 3;
+                                                                                
+        if (abs(Isum) >3 ) GLCD_write_buf(0xFE);                                // Show energy flow 'blob' between Grid and House
+                                                                                // If current flow is < 0.3A don't show the blob
+
+        if (State == STATE_C) {
+        
+            BACKLIGHT_ON;                                                       // LCD backlight on
+            BacklightTimer = BACKLIGHT;
+ 
+            energy_ev += 3; // animate energy flow to EV
+            if (energy_ev > 89) energy_ev = 74;
+
+            GLCDx = energy_ev;
+            GLCDy = 3;
+            GLCD_write_buf(0xFE);                                               // Show energy flow 'blob' between House and Car
+
+            GLCDy = 2;
+            GLCDx = 77;
+            GLCD_write_buf((Balanced[0] / 100) + 0x30);
+            GLCD_write_buf(((Balanced[0] / 10) % 10) + 0x30);
+            GLCD_write_buf('A');
+        }
+
+        if (LCDTimer < 5 && Mode == MODE_SOLAR)                                 // Show Sum of currents when solar charging.
+        {
+            GLCDx = 26 + 3;
+            GLCDy = 1;
+            GLCD_write_buf(0xE3);                                               // Sum 'E' sign
+
+            GLCDy = 2;
+            if (abs(Isum) > 1000) {
+                GLCDx = 14 + 3;                                                 // move first digit to left if Isum>100A
+                if (Isum < 0) GLCD_write_buf('-');
+                GLCDx = 20 + 3;
+                GLCD_write_buf((abs((int) (Isum / 1000)) + 0x30));
+            } else                                                              // Display sum of all phases (used for solar charging)
+            {
+                GLCDx = 20 + 3;
+                if (Isum < 0) GLCD_write_buf('-');
+            }
+            GLCDx = 26 + 3;
+            GLCD_write_buf((abs((int) (Isum / 100) % 10) + 0x30));
+            GLCD_write_buf((abs((int) ((Isum) / 10) % 10) + 0x30));
+            GLCD_write_buf('A');
+        } else {                                                                // Displayed only in Smart and Solar modes
+            for (x = 0; x < 3; x++)                                             // Display L1, L2 and L3 currents on LCD
+            {
+                GLCDy = x;
+                GLCDx = 20 + 3;
+                if (Irms[x] < 0) GLCD_write_buf('-');
+                else GLCDx = 26 + 3;
+                GLCD_write_buf(abs((int) (Irms[x] / 100)) + 0x30);
+                GLCD_write_buf(abs((int) ((Irms[x]) / 10) % 10) + 0x30);
+                GLCD_write_buf('A');
             }
         }
-        GLCD_sendbuf(4);                                                        // copy buffer to LCD
-    } else if ((State == STATE_A) || (State == STATE_B)) {
-        glcd_clrln(0, 0x00);
-        glcd_clrln(1, 0x04);                                                    // horizontal line
-        if (Access_bit || Access == 0) {
-            GLCD_print2(2, (const far char *) "READY TO");
-            GLCD_print2(4, (const far char *) "CHARGE  ");
-        } else {
-            GLCD_print2(2, (const far char *) "ACCESS");
-            GLCD_print2(4, (const far char *) "DENIED");
+        GLCD_sendbuf4(0);                                                       // Copy LCD buffer to GLCD
+
+        glcd_clrln(4, 0);                                                       // Clear line 4
+        if (Error & LESS_6A) {
+            if (LCDTimer < 5) {
+                GLCD_print2(5, (const far char *) "WAITING");
+            } else GLCD_print2(5, (const far char *) "FOR POWER");
+        } else if (Error & NO_SUN) {
+            if (LCDTimer < 5) {
+                GLCD_print2(5, (const far char *) "WAITING");
+            } else GLCD_print2(5, (const far char *) "FOR SOLAR");
+        } else if (State == STATE_A || State == STATE_B) {
+            GLCD_print2(5, (const far char *) "READY");                         // STATE A +B message
+            if (ChargeDelay) {
+                GLCDx = 12 * 8 + 4;
+                GLCD_write_buf2((ChargeDelay / 10) + 0x30);
+                GLCD_write_buf2((ChargeDelay % 10) + 0x30);
+                GLCD_sendbuf(5); // copy buffer to LCD
+            }
+        } else if (State == STATE_C) {
+            BACKLIGHT_ON;                                                       // LCD backlight on
+            BacklightTimer = BACKLIGHT;
+            
+            if (LCDTimer < 7) {
+                if (LCDTimer < 4 && Mode != MODE_NORMAL ) {
+                    if (Mode == MODE_SOLAR) GLCD_print2(5, (const far char *) "SOLAR");
+                    else GLCD_print2(5, (const far char *) "SMART");
+                                        
+                } else GLCD_print2(5, (const far char *) "CHARGING");
+            } else {
+                GLCDx = 4 + 30;
+
+                GLCD_buffer_clr(); // Clear buffer
+                GLCD_write_buf2((Balanced[0] / 100) + 0x30);
+                GLCD_write_buf2(((Balanced[0] / 10) % 10) + 0x30);
+                GLCD_write_buf2('.');
+                GLCD_write_buf2((Balanced[0] % 10) + 0x30);
+                GLCD_write_buf2('A');
+            }
+            GLCD_sendbuf(5); // copy buffer to LCD
         }
-        glcd_clrln(6, 0x10);                                                    // horizontal line
         glcd_clrln(7, 0x00);
-
-        if (ChargeDelay > 0) {
-            GLCDx = 12 * 8 + 4;
-            GLCD_write_buf2((ChargeDelay / 10) + 0x30);
-            GLCD_write_buf2((ChargeDelay % 10) + 0x30);
-            GLCD_sendbuf(4);                                                    // copy buffer to LCD
-        }
-
-    } else if (State == STATE_C) {
-        BACKLIGHT_ON;                                                           // LCD backlight on
-        BacklightTimer = BACKLIGHT;
-
-        GLCD_print2(2, (const far char *) "CHARGING");
-
-        GLCDx = 4 + 12;
-        GLCD_buffer_clr();                                                      // Clear buffer
-        GLCD_write_buf2((Balanced[0] / 10) + 0x30);
-        GLCD_write_buf2((Balanced[0] % 10) + 0x30);
-        GLCD_write_buf2('A');
-        if (Mode)                                                               // Smart Mode?
-        {
-            GLCD_write_buf2('(');
-            GLCD_write_buf2((MaxMains / 10) + 0x30);
-            GLCD_write_buf2((MaxMains % 10) + 0x30);
-            GLCD_write_buf2('A');
-            GLCD_write_buf2(')');
-        }
-        GLCD_sendbuf(4);                                                        // copy buffer to LCD
-    }
+    } // End Mode SMART or SOLAR
 
     if (BacklightTimer) BacklightTimer--;                                       // Decrease backlight counter every second.
     else BACKLIGHT_OFF;                                                         // zero? switch LCD backlight off
@@ -568,9 +701,11 @@ void GLCD(void) {
 //##############################################################################################################################
 // 10 CONFIG			- Set to Fixed Cable or Type 2 Socket
 // 20 MODE  			- Set to Smart mode, or Normal EVSE mode
+// 25       START       - Start Surplus Current (Mode=Solar)
+// 27       STOP        - Stop time (Mode=Solar)
 // 30		MAINS 		- Set max MAINS Current (25-100) (Mode=Smart)
-// 40 MAX   			- Set MAX Charge Current for the EV (16-80)
 // 50		MIN   		- Set MIN Charge Current the EV will accept (Mode=Smart)
+// 40 MAX   			- Set MAX Charge Current for the EV (16-80)
 // 60 LOCK				- Cable lock Enable/disable
 // 70 CABLE				- Set Fixed Cable Current limit 
 // 80 CAL 		  		- Calibrate CT1
@@ -588,9 +723,9 @@ void GLCDMenu(unsigned char Buttons) {
     BacklightTimer = BACKLIGHT;                                                 // delay before LCD backlight turns off.
     BACKLIGHT_ON;                                                               // LCD backlight on	
 
-    if (RCmon == 1 && Error == RCD_TRIPPED && PORTBbits.RB1 == 0)               // RCD was tripped, but RCD level is back to normal
+    if (RCmon == 1 && (Error & RCD_TRIPPED) && PORTBbits.RB1 == 0)              // RCD was tripped, but RCD level is back to normal
     {
-        Error = NO_ERROR;                                                       // Clear error, by pressing any button
+        Error &= ~RCD_TRIPPED;                                                  // Clear RCD error bit, by pressing any button
     }
 
     if ((LCDNav == 0) && (Buttons == 0x5) && (ButtonRelease == 0))              // Button 2 pressed ?
@@ -907,18 +1042,10 @@ void GLCDMenu(unsigned char Buttons) {
                 GLCD_write_buf2((CT1 % 10) + 0x30);
             } else {
                 GLCDx = 4 + (12 * 3);
-                // Modbus / Legacy
-                if (Modbus) {
-                    GLCD_write_buf2(((unsigned int) Irms[0] / 10) + 0x30);
-                    GLCD_write_buf2(((unsigned int) Irms[0] % 10) + 0x30);
-                    GLCD_write_buf2('.');
-                    GLCD_write_buf2(((unsigned int)(Irms[0] * 10) % 10) + 0x30);                 
-                } else {
-                    GLCD_write_buf2(((unsigned int) Irms[0] / 100) + 0x30);
-                    GLCD_write_buf2(((unsigned int) Irms[0] % 100 / 10) + 0x30);
-                    GLCD_write_buf2('.');
-                    GLCD_write_buf2(((unsigned int) Irms[0] % 10) + 0x30);
-                }
+                GLCD_write_buf2(((unsigned int) Irms[0] / 100) + 0x30);
+                GLCD_write_buf2(((unsigned int) Irms[0] % 100 / 10) + 0x30);
+                GLCD_write_buf2('.');
+                GLCD_write_buf2(((unsigned int) Irms[0] % 10) + 0x30);
             }
             GLCDx = 4 + (12 * 7);
             GLCD_write_buf2('A');
@@ -984,7 +1111,7 @@ void goto_xy(unsigned char x, unsigned char y) {
 void glcd_clrln(unsigned char ln, unsigned char data) {
     unsigned char i;
     goto_xy(0, ln);
-    for (i = 0; i < 132; i++) {
+    for (i = 0; i < 128; i++) {
         st7565_data(data);                                                      //put data on data port  
     }
 }
@@ -997,6 +1124,22 @@ void GLCD_sendbuf(unsigned char RowAdr) {
 
     goto_xy(0, RowAdr + 1);
     for (i = 0; i < 128; i++) st7565_data(GLCDbuf[x++]);                        //put data on data port  
+}
+
+void GLCD_sendbuf4(unsigned char RowAdr) {
+    unsigned int i, x = 0;
+
+    goto_xy(0, RowAdr);
+    for (i = 0; i < 128; i++) st7565_data(GLCDbuf[x++]);                        //put data on data port
+
+    goto_xy(0, RowAdr + 1);
+    for (i = 0; i < 128; i++) st7565_data(GLCDbuf[x++]);                        //put data on data port
+
+    goto_xy(0, RowAdr + 2);
+    for (i = 0; i < 128; i++) st7565_data(GLCDbuf[x++]);                        //put data on data port
+
+    goto_xy(0, RowAdr + 3);
+    for (i = 0; i < 128; i++) st7565_data(GLCDbuf[x++]);                        //put data on data port
 }
 
 void glcd_clear(void) {
@@ -1020,6 +1163,18 @@ void GLCD_buffer_clr(void) {
     do {
         GLCDbuf[x++] = 0;                                                       // clear GLCD buffer
     } while (x != 0);
+}
+
+void GLCD_write_buf(unsigned int c) {
+    unsigned int i, ch, x;
+
+    x = 128 * GLCDy;
+    x = x + GLCDx;
+    for (i = 0; i < 5; i++) {
+        ch = font[(5 * c) + i];
+        GLCDbuf[x++] = ch;
+    }
+    GLCDx = GLCDx + 6;
 }
 
 void GLCD_write_buf2(unsigned int c) {
@@ -1190,3 +1345,7 @@ void GLCD_version(void) {
     delay(2000);                                                                // show version for 2 seconds
 }
 
+void GLCD_Flow_buf(void) {
+    unsigned int x;
+    for (x = 0; x < 512; x++) GLCDbuf[x] = LCD_Flow[x]; //copy picture data to LCD buffer
+}
