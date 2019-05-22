@@ -404,21 +404,45 @@ unsigned char getMenuItems (void) {
     return m;
 }
 
-unsigned char MenuNavChar (unsigned char Buttons, unsigned char Value, unsigned char Min, unsigned char Max) {
-    if (Buttons == 0x3) Value++;
-    if (Buttons == 0x6) Value--;
-    if (Value < Min) Value = Max;
-    if (Value > Max) Value = Min;
+/**
+ * Increase or decrease char value
+ * 
+ * @param unsigned char Buttons
+ * @param unsigned char Value
+ * @param unsigned char Min
+ * @param unsigned char Max
+ * @return unsigned char Value
+ */
+unsigned char MenuNavChar(unsigned char Buttons, unsigned char Value, unsigned char Min, unsigned char Max) {
+    if (Buttons == 0x3) {
+        if (Value >= Max) Value = Min;
+        else Value++;
+    } else if (Buttons == 0x6) {
+        if (Value <= Min) Value = Max;
+        else Value--;
+    }
     
     return Value;
 }
 
-unsigned int MenuNavInt (unsigned char Buttons, unsigned int Value, unsigned int Min, unsigned int Max) {
-    if (Buttons == 0x3) Value++;
-    if (Buttons == 0x6) Value--;
-    if (Value < Min) Value = Max;
-    if (Value > Max) Value = Min;
-    
+/**
+ * Increase or decrease int value
+ * 
+ * @param unsigned int Buttons
+ * @param unsigned int Value
+ * @param unsigned int Min
+ * @param unsigned int Max
+ * @return unsigned int Value
+ */
+unsigned int MenuNavInt(unsigned char Buttons, unsigned int Value, unsigned int Min, unsigned int Max) {
+    if (Buttons == 0x3) {
+        if (Value >= Max) Value = Min;
+        else Value++;
+    } else if (Buttons == 0x6) {
+        if (Value <= Min) Value = Max;
+        else Value--;
+    }
+   
     return Value;
 }
 
