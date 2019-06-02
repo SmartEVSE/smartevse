@@ -32,10 +32,10 @@
 #include "GLCD.h"
 
 
-#define VERSION "2.06"                                                          // SmartEVSE software version
+#define VERSION "2.10"                                                          // SmartEVSE software version
 #define DEBUG_P                                                                 // Debug print enable/disable
 
-#define ICAL 3.00                                                               // Irms Calibration value (for Current transformers) 
+#define ICAL 1.00                                                               // Irms Calibration value (for Current transformers) 
 #define MAX_MAINS 25                                                            // max Current the Mains connection can supply
 #define MAX_CURRENT 13                                                          // max charging Current for the EV
 #define MIN_CURRENT 6                                                           // minimum Current the EV will accept
@@ -47,9 +47,20 @@
 #define ACCESS 0                                                                // 0= Charge on plugin, 1= (Push)Button on IO2 is used to Start/Stop charging.
 #define RC_MON 0                                                                // Residual Current Monitoring on IO3. Disabled=0, RCM14=1
 #define CHARGEDELAY 60                                                          // Seconds to wait after overcurrent, before trying again
-#define BACKLIGHT 30                                                            // Seconds delay for the LCD backlight to turn off.
+#define BACKLIGHT 60                                                            // Seconds delay for the LCD backlight to turn off.
+#define START_CURRENT 4                                                         // Start charging when surplus current on one phase exceeds 4A (Solar)
+#define STOP_TIME 10                                                            // Stop charging after 10 minutes at MIN charge current (Solar)
+#define MAINS_METER 3
+#define MAINS_METER_ADDRESS 10
+#define MAINS_METER_MEASURE 0
+#define PV_METER 0
+#define PV_METER_ADDRESS 11
 
-#define GOODFCS16 0x0f47                                                        // crc16 frame check value
+// Mode settings
+#define MODE_NORMAL 0
+#define MODE_SMART 1
+#define MODE_SOLAR 2                    
+
 #define ACK_TIMEOUT 1000                                                        // 1000ms timeout
 
 #define STATE_A 1                                                               // Vehicle not connected
@@ -72,34 +83,52 @@
 #define NO_ERROR 0
 #define LESS_6A 1
 #define CT_NOCOMM 2
-#define TEMP_HIGH 3
-#define NOCURRENT 4                                                             // No Current! ERROR=LESS_6A, switch to STATE A
-#define RCD_TRIPPED 5                                                           // RCD tripped. >6mA DC residual current detected.
-#define Test_IO 6
+#define TEMP_HIGH 4
+#define NOCURRENT 8                                                             // No Current! ERROR=LESS_6A, switch to STATE A
+#define RCD_TRIPPED 16                                                          // RCD tripped. >6mA DC residual current detected.
+#define NO_SUN 32
+#define Test_IO 64
 
-#define SOLENOID_LOCK       {LATAbits.LATA4 = 1;LATAbits.LATA5 = 0;}
-#define SOLENOID_UNLOCK     {LATAbits.LATA4 = 0;LATAbits.LATA5 = 1;}
-#define SOLENOID_OFF        {LATAbits.LATA4 = 1;LATAbits.LATA5 = 1;}
+#define SOLENOID_LOCK       {PORTAbits.RA4 = 1;PORTAbits.RA5 = 0;}
+#define SOLENOID_UNLOCK     {PORTAbits.RA4 = 0;PORTAbits.RA5 = 1;}
+#define SOLENOID_OFF        {PORTAbits.RA4 = 1;PORTAbits.RA5 = 1;}
 
-#define CONTACTOR_OFF LATBbits.LATB4 = 0;                                        // Contactor OFF
-#define CONTACTOR_ON  LATBbits.LATB4 = 1;                                        // Contactor ON
+#define CONTACTOR_OFF PORTBbits.RB4 = 0;                                        // Contactor OFF
+#define CONTACTOR_ON  PORTBbits.RB4 = 1;                                        // Contactor ON
 
-#define BACKLIGHT_OFF LATAbits.LATA3 = 0;                                        // LCD Backlight OFF
-#define BACKLIGHT_ON  LATAbits.LATA3 = 1;                                        // LCD Backlight ON
+#define BACKLIGHT_OFF PORTAbits.RA3 = 0;                                        // LCD Backlight OFF
+#define BACKLIGHT_ON  PORTAbits.RA3 = 1;                                        // LCD Backlight ON
 
-#define MENU_CONFIG 10
-#define MENU_MODE 20
-#define MENU_LOADBL 100
-#define MENU_MAINS 30
-#define MENU_MAX 40
-#define MENU_MIN 50
-#define MENU_LOCK 60
-#define MENU_CABLE 70
-#define MENU_CAL 80
-#define MENU_EXIT 90
-#define MENU_ACCESS 110
-#define MENU_RCMON 120
+#define MENU_ENTER 1
+#define MENU_CONFIG 2
+#define MENU_MODE 3
+#define MENU_START 4
+#define MENU_STOP 5
+#define MENU_LOADBL 6
+#define MENU_MAINS 7
+#define MENU_MIN 8
+#define MENU_MAX 9
+#define MENU_CABLE 10
+#define MENU_LOCK 11
+#define MENU_ACCESS 12
+#define MENU_RCMON 13
+#define MENU_CAL 14
+#define MENU_MAINSMETER 15
+#define MENU_MAINSMETERADDRESS 16
+#define MENU_MAINSMETERMEASURE 17
+#define MENU_PVMETER 18
+#define MENU_PVMETERADDRESS 19
+#define MENU_EXIT 20
 
+#define EM_SENSORBOX1 1
+#define EM_SENSORBOX2 3
+#define EM_PHOENIX_CONTACT 10
+#define EM_FINDER 20
+
+#define MODBUS_INVALID 0
+#define MODBUS_OK 1
+#define MODBUS_REQUEST 2
+#define MODBUS_RESPONSE 3
 
 #ifdef DEBUG_P
 #define DEBUG_PRINT(x) printf x
@@ -107,14 +136,13 @@
 #define DEBUG_PRINT(x)
 #endif 
 
-#define _RSTB_0 LATCbits.LATC4 = 0;
-#define _RSTB_1 LATCbits.LATC4 = 1;
-#define _A0_0 LATCbits.LATC0 = 0;
-#define _A0_1 LATCbits.LATC0 = 1;
+#define _RSTB_0 PORTCbits.RC4 = 0;
+#define _RSTB_1 PORTCbits.RC4 = 1;
+#define _A0_0 PORTCbits.RC0 = 0;
+#define _A0_1 PORTCbits.RC0 = 1;
 
 
-extern char GLCDbuf[256];                                                       // GLCD buffer (one row double height text only)
-
+extern char GLCDbuf[512];                                                       // GLCD buffer (half of the display)
 
 extern unsigned int MaxMains;                                                   // Max Mains Amps (hard limit, limited by the MAINS connection)
 extern unsigned int MaxCurrent;                                                 // Max Charge current
@@ -127,24 +155,29 @@ extern char Config;                                                             
 extern char LoadBl;                                                             // Load Balance Setting (Disable, Master or Slave)
 extern char Access;                                                             // Allow access to EVSE with button on IO2
 extern char RCmon;                                                              // Residual Current monitor
+extern unsigned int StartCurrent;
+extern unsigned int StopTime;
+extern unsigned char MainsMeter;                                                // Type of Mains electric meter (0: Disabled / 3: sensorbox v2 / 10: Phoenix Contact / 20: Finder)
+extern unsigned char MainsMeterAddress;
+extern unsigned char MainsMeterMeasure;                                         // What does Mains electric meter measure (0: Mains (Home+EVSE+PV) / 1: Home+EVSE / 2: Home)
+extern unsigned char PVMeter;                                                   // Type of PV electric meter (0: Disabled / 10: Phoenix Contact / 20: Finder)
+extern unsigned char PVMeterAddress;
+extern unsigned char EVSEMeter;                                                 // Type of EVSE electric meter (0: Disabled / 10: Phoenix Contact / 20: Finder)
+extern unsigned char EVSEMeterAddress;
 
+extern signed double Irms[3];                                                  // Momentary current per Phase (Amps *10) (23 = 2.3A)
 
-#define EEPROM_BYTES 19                                                         // total 19 bytes
-
-
-extern double Irms[3];                                                          // Momentary current per Phase (Amps *10) (23= 2.3A)
-                                                                                // Max 4 phases supported
-extern unsigned int crc16;
 extern unsigned char State;
 extern unsigned char Error;
 extern unsigned char NextState;
 
 extern unsigned int MaxCapacity;                                                // Cable limit (Amps)(limited by the wire in the charge cable, set automatically, or manually if Config=Fixed Cable)
-extern unsigned int Imeasured;                                                  // Max of all CT inputs (Amps *10)
+extern unsigned int Imeasured;                                                  // Max of all CT inputs (Amps * 10) (23 = 2.3A)
+extern int Isum;            
 extern int Balanced[4];                                                         // Amps value per EVSE (max 4)
 
 extern unsigned char RX1byte;
-extern unsigned char idx, idx2, ISRFLAG, ISR2FLAG;
+extern unsigned char idx2, ISR2FLAG;
 extern unsigned char menu;
 extern unsigned int locktimer, unlocktimer;                                     // solenoid timers
 extern unsigned long Timer;                                                     // mS counter
@@ -162,20 +195,40 @@ extern unsigned char ChargeDelay;                                               
 extern unsigned char TestState;
 extern unsigned char Access_bit;
 
-extern const far char MenuConfig[];
-extern const far char MenuMode[];
-extern const far char MenuLoadBl[];
-extern const far char MenuMains[];
-extern const far char MenuMax[];
-extern const far char MenuMin[];
-extern const far char MenuCable[];
-extern const far char MenuLock[];
-extern const far char MenuCal[];
-extern const far char MenuAccess[];
-extern const far char MenuRCmon[];
+extern unsigned char MenuItems[18];
+
+const far struct {
+    char Key[7];
+    char LCD[9];
+    char Desc[52];
+} MenuStr[21] = {
+    {"",       "",         "Not in menu"},
+    {"",       "",         "Hold 2 sec"},
+    {"CONFIG", "CONFIG",   "Set to Fixed Cable or Type 2 Socket"},
+    {"MODE",   "MODE",     "Set to Normal, Smart or Solar EVSE mode"},
+    {"START",  "START",    "Surplus energy start Current"},
+    {"STOP",   "STOP",     "Stop solar charging at 6A after this time"},
+    {"LOADBL", "LOAD BAL", "Set Load Balancing mode"},
+    {"MAINS",  "MAINS",    "Set Max MAINS Current"},
+    {"MIN",    "MIN",      "Set MIN Charge Current the EV will accept"},
+    {"MAX",    "MAX",      "Set MAX Charge Current for the EV"},
+    {"CABLE",  "CABLE",    "Set Fixed Cable Current limit"},
+    {"LOCK",   "LOCK",     "Cable locking actuator type"},
+    {"ACCESS", "ACCESS",   "Access control on IO2"},
+    {"RCMON",  "RCMON",    "Residual Current Monitor on IO3"},
+    {"CAL",    "CAL",      "Calibrate CT1 (CT2+3 will also change)"},
+    {"MAINEM", "MAINSMET", "Type of mains electric meter"},
+    {"MAINAD", "MAINSADR", "Address of mains electric meter"},
+    {"MAINM",  "MAINSMES", "Mains electric meter scope (What does it measure?)"},
+    {"PVEM",   "PV METER", "Type of PV electric meter"},
+    {"PVAD",   "PVADDR",   "Address of PV electric meter"},
+    {"EXIT",   "EXIT",     "EXIT"}
+};
 
 void delay(unsigned int d);
 void read_settings(void);
 void write_settings(void);
+unsigned char getMenuItems(void);
+unsigned char * getMenuItemOption(unsigned char nav);
 
 #endif
