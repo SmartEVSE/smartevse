@@ -100,7 +100,7 @@ Register | Description | Values
 
 ## Register 0xE*: Load balancing configuration (same on all SmartEVSE)
 
-Register | Option
+Register | Option | Values
 --- | --- | ---
 0xE0 | Max Charge Current of the system | (A)
 0xE1 | EVSE mode | 0:Normal / 1:Smart / 2:Solar
@@ -112,4 +112,4 @@ Register | Option
 0xE7 | Type of PV electric meter | *
 0xE8 | Address of PV electric meter | 5-255
 
-* Number in brackets in section "Predefined electric meters"
+ * Number in brackets in section "Predefined electric meters"
