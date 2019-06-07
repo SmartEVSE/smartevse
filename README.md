@@ -84,6 +84,14 @@ Information on how to compile and setup the controller can be found on the [smar
 
 # Modbus registers
 
+## Register 0xA*: Current state
+
+Register | Description | Values
+--- | --- | ---
+0xA0 | State | A-D (EVSE State), E-H (A-D Waiting for Balance Master)
+0xA1 | Error | Bit: NO_SUN / RCD / NO_CURRENT / TEMP_HIGH / NO_COMM / LESS_6A / NO_ERROR
+0xA2 | Charging current | (A)
+
 ## Register 0xC*: Configuration
 
 Register | Description | Values
