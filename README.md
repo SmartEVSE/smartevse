@@ -78,32 +78,38 @@ Information on how to compile and setup the controller can be found on the [smar
 
 # Predefined electric meters
 
-- Sensorbox
-- PHOENIX CONTACT EEM-350-D-MCB
-- Finder 7E.78.8.400.0212
+- Sensorbox v1 (1, 2)
+- PHOENIX CONTACT EEM-350-D-MCB (3)
+- Finder 7E.78.8.400.0212 (4)
 
 # Modbus registers
 
 ## Register 0xC*: Configuration
 
-0xC0: CONFIG
-0xC1: LOADBL
-0xC2: MIN
-0xC3: CABLE
-0xC4: LOCK
-0xC5: START
-0xC6: STOP
-0xC7: ACCESS
-0xC8: RCMON
+Register | Description | Values
+--- | --- | ---
+0xC0 | Configuration | 0:Socket / 1:Fixed Cable
+0xC1 | Load Balance | 0:Disable / 1:Master / 2-4:Slave
+0xC2 | Minimal current the EV is happy with | (A)
+0xC3 | Fixed Cable Current limit | (A)
+0xC4 | Cable lock | 0:Disable / 1:Solenoid / 2:Motor
+0xC5 | Surplus energy start Current | (A)
+0xC6 | Stop solar charging at 6A after this time | (min)
+0xC7 | External Start/Stop button | 0:Disable / 1:Enable
+0xC8 | Residual Current Monitor | 0:Disable / 1:Enable
 
 ## Register 0xE*: Load balancing configuration (same on all SmartEVSE)
 
-0xE0: MAX
-0xE1: MODE
-0xE2: MAINS
-0xE3: CAL
-0xE4: MAINSMETER
-0xE5: MAINSMETERADDRESS
-0xE6: MAINSMETERMEASURE
-0xE7: PVMETER
-0xE8: PVMETERADDRESS
+Register | Option
+--- | --- | ---
+0xE0 | Max Charge Current of the system | (A)
+0xE1 | EVSE mode | 0:Normal / 1:Smart / 2:Solar
+0xE2 | Max Mains Current | (A)
+0xE3 | CT calibration value | Multiplier
+0xE4 | Type of Mains electric meter | *
+0xE5 | Address of Mains electric meter | 5-255
+0xE6 | What does Mains electric meter measure | 0: Mains (Home+EVSE+PV) / 1: Home+EVSE
+0xE7 | Type of PV electric meter | *
+0xE8 | Address of PV electric meter | 5-255
+
+* Number in brackets in section "Predefined electric meters"
