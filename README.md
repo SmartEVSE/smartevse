@@ -78,9 +78,10 @@ Information on how to compile and setup the controller can be found on the [smar
 
 # Predefined electric meters
 
-- Sensorbox v1 (1, 2)
+- Sensorbox (1, 2)
 - PHOENIX CONTACT EEM-350-D-MCB (3)
 - Finder 7E.78.8.400.0212 (4)
+- Custom (5)
 
 # Modbus registers
 
@@ -116,8 +117,11 @@ Register | Option | Values
 0xE3 | CT calibration value | Multiplier
 0xE4 | Type of Mains electric meter | *
 0xE5 | Address of Mains electric meter | 5-255
-0xE6 | What does Mains electric meter measure | 0: Mains (Home+EVSE+PV) / 1: Home+EVSE
+0xE6 | What does Mains electric meter measure | 0:Mains (Home+EVSE+PV) / 1:Home+EVSE
 0xE7 | Type of PV electric meter | *
 0xE8 | Address of PV electric meter | 5-255
+0xE9 | Byte order of custom electric meter | 0:LBF & LWF / 1:LBF &  HWF / 2:HBF & LWF / 3:HBF & HWF
+0xEA | Register for Current of custom electric meter | 0-255
+0xEB | Divisor for Current of custom electric meter (10<sup>x</sup>) | 0-4
 
  * Number in brackets in section "Predefined electric meters"
