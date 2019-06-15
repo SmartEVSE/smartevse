@@ -81,7 +81,8 @@ Information on how to compile and setup the controller can be found on the [smar
 - Sensorbox (1, 2)
 - PHOENIX CONTACT EEM-350-D-MCB (3)
 - Finder 7E.78.8.400.0212 (4)
-- Custom (5)
+- Eastron SDM630 (5)
+- Custom (6)
 
 # Modbus registers
 
