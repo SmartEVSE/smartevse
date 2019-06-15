@@ -124,6 +124,6 @@ Register | Option | Values
 0xE8 | Address of PV electric meter | 5-255
 0xE9 | Byte order of custom electric meter | 0:LBF & LWF / 1:LBF &  HWF / 2:HBF & LWF / 3:HBF & HWF
 0xEA | Register for Current of custom electric meter | 0-255
-0xEB | Divisor for Current of custom electric meter (10<sup>x</sup>) | 0-4
+0xEB | Divisor for Current of custom electric meter (10<sup>x</sup>) | 0-7 / 8:double
 
  * Number in brackets in section "Predefined electric meters"
