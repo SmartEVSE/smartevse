@@ -106,8 +106,8 @@ Register | Description | Values
 0xC4 | Cable lock | 0:Disable / 1:Solenoid / 2:Motor
 0xC5 | Surplus energy start Current | (A)
 0xC6 | Stop solar charging at 6A after this time | (min)
-0xC7 | External Start/Stop button | 0:Disable / 1:Enable
-0xC8 | Residual Current Monitor | 0:Disable / 1:Enable
+0xC7 | External Switch on IO2 | 0:Disable / 1:Access Push-Button / 2:Access Switch / 3:Smart-Solar Push-Button / 4:Smart-Solar Switch
+0xC8 | Residual Current Monitor on IO3 | 0:Disable / 1:Enable
 
 ## Register 0xE*: Load balancing configuration (same on all SmartEVSE)
 
