@@ -86,44 +86,46 @@ Information on how to compile and setup the controller can be found on the [smar
 
 # Modbus registers
 
+All registers are 16 bit unsigned integers.
+
 ## Register 0xA*: Current state
 
-Register | Description | Values
---- | --- | ---
-0xA0 | State | A-D (EVSE State), E-H (A-D Waiting for Balance Master)
-0xA1 | Error | Bit: NO_SUN / RCD / NO_CURRENT / TEMP_HIGH / NO_COMM / LESS_6A / NO_ERROR
-0xA2 | Charging current | (A * 10)
-0xA5 | Access bit |
+Register | Access | Description | Unit | Values
+--- | --- | --- | ---
+0xA0 | R | State | | A-D (EVSE State), E-H (A-D Waiting for Balance Master)
+0xA1 | R | Error | | Bit: NO_SUN / RCD / NO_CURRENT / TEMP_HIGH / NO_COMM / LESS_6A / NO_ERROR
+0xA2 | R | Charging current | 0.1 A |
+0xA5 | R/W | Access bit | | 0:No Access / 1:Access
 
 ## Register 0xC*: Configuration
 
-Register | Description | Values
+Register | Access | Description | Unit | Values
 --- | --- | ---
-0xC0 | Configuration | 0:Socket / 1:Fixed Cable
-0xC1 | Load Balance | 0:Disable / 1:Master / 2-4:Slave
-0xC2 | Minimal current the EV is happy with | (A)
-0xC3 | Fixed Cable Current limit | (A)
-0xC4 | Cable lock | 0:Disable / 1:Solenoid / 2:Motor
-0xC5 | Surplus energy start Current | (A)
-0xC6 | Stop solar charging at 6A after this time | (min)
-0xC7 | External Switch on IO2 | 0:Disable / 1:Access Push-Button / 2:Access Switch / 3:Smart-Solar Push-Button / 4:Smart-Solar Switch
-0xC8 | Residual Current Monitor on IO3 | 0:Disable / 1:Enable
+0xC0 | R/W | Configuration | | 0:Socket / 1:Fixed Cable
+0xC1 | R/W | Load Balance (Also address of the device ) | | 0:Disable / 1:Master / 2-4:Slave
+0xC2 | R/W | Minimal current the EV is happy with | A | 6 - 16
+0xC3 | R/W | Cable Current limit | A | 13 - 80
+0xC4 | R/W | Cable lock | | 0:Disable / 1:Solenoid / 2:Motor
+0xC5 | R/W | Surplus energy start Current | A | 1 - 16
+0xC6 | R/W | Stop solar charging at 6A after this time | min | 0 - 60
+0xC7 | R/W | External Switch on IO2 | | 0:Disable / 1:Access Push-Button / 2:Access Switch / 3:Smart-Solar Push-Button / 4:Smart-Solar Switch
+0xC8 | R/W | Residual Current Monitor on IO3 | | 0:Disable / 1:Enable
 
 ## Register 0xE*: Load balancing configuration (same on all SmartEVSE)
 
-Register | Option | Values
+Register | Access | Description | Unit | Values
 --- | --- | ---
-0xE0 | Max Charge Current of the system | (A)
-0xE1 | EVSE mode | 0:Normal / 1:Smart / 2:Solar
-0xE2 | Max Mains Current | (A)
-0xE3 | CT calibration value | Multiplier
-0xE4 | Type of Mains electric meter | *
-0xE5 | Address of Mains electric meter | 5-255
-0xE6 | What does Mains electric meter measure | 0:Mains (Home+EVSE+PV) / 1:Home+EVSE
-0xE7 | Type of PV electric meter | *
-0xE8 | Address of PV electric meter | 5-255
-0xE9 | Byte order of custom electric meter | 0:LBF & LWF / 1:LBF &  HWF / 2:HBF & LWF / 3:HBF & HWF
-0xEA | Register for Current of custom electric meter | 0-255
-0xEB | Divisor for Current of custom electric meter (10<sup>x</sup>) | 0-7 / 8:double
+0xE0 | R/W | Max Charge Current of the system | A | 10 - 80
+0xE1 | R/W | EVSE mode | | 0:Normal / 1:Smart / 2:Solar
+0xE2 | R/W | Max Mains Current | A | 10 - 100
+0xE3 | R/W | CT calibration value | 0.01 | Multiplier
+0xE4 | R/W | Type of Mains electric meter | | *
+0xE5 | R/W | Address of Mains electric meter | | 5 - 255
+0xE6 | R/W | What does Mains electric meter measure | | 0:Mains (Home+EVSE+PV) / 1:Home+EVSE
+0xE7 | R/W | Type of PV electric meter | | *
+0xE8 | R/W | Address of PV electric meter | | 5 - 255
+0xE9 | R/W | Byte order of custom electric meter | | 0:LBF & LWF / 1:LBF &  HWF / 2:HBF & LWF / 3:HBF & HWF
+0xEA | R/W | Register for Current of custom electric meter | | 0 - 255
+0xEB | R/W | Divisor for Current of custom electric meter | 10<sup>x</sup> | 0 - 7 / 8:double
 
  * Number in brackets in section "Predefined electric meters"
