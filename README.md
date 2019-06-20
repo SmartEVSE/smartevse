@@ -91,7 +91,7 @@ All registers are 16 bit unsigned integers.
 ## Register 0xA*: Current state
 
 Register | Access | Description | Unit | Values
---- | --- | --- | ---
+--- | --- | --- | --- | ---
 0xA0 | R | State | | A-D (EVSE State), E-H (A-D Waiting for Balance Master)
 0xA1 | R | Error | | Bit: NO_SUN / RCD / NO_CURRENT / TEMP_HIGH / NO_COMM / LESS_6A / NO_ERROR
 0xA2 | R | Charging current | 0.1 A |
@@ -100,7 +100,7 @@ Register | Access | Description | Unit | Values
 ## Register 0xC*: Configuration
 
 Register | Access | Description | Unit | Values
---- | --- | ---
+--- | --- | --- | --- | ---
 0xC0 | R/W | Configuration | | 0:Socket / 1:Fixed Cable
 0xC1 | R/W | Load Balance (Also address of the device ) | | 0:Disable / 1:Master / 2-4:Slave
 0xC2 | R/W | Minimal current the EV is happy with | A | 6 - 16
@@ -114,7 +114,7 @@ Register | Access | Description | Unit | Values
 ## Register 0xE*: Load balancing configuration (same on all SmartEVSE)
 
 Register | Access | Description | Unit | Values
---- | --- | ---
+--- | --- | --- | --- | ---
 0xE0 | R/W | Max Charge Current of the system | A | 10 - 80
 0xE1 | R/W | EVSE mode | | 0:Normal / 1:Smart / 2:Solar
 0xE2 | R/W | Max Mains Current | A | 10 - 100
