@@ -93,9 +93,13 @@ All registers are 16 bit unsigned integers.
 Register | Access | Description | Unit | Values
 --- | --- | --- | --- | ---
 0xA0 | R | State | | A-D (EVSE State), E-H (A-D Waiting for Balance Master)
-0xA1 | R | Error | | Bit: NO_SUN / RCD / NO_CURRENT / TEMP_HIGH / NO_COMM / LESS_6A / NO_ERROR
-0xA2 | R | Charging current | 0.1 A |
-0xA5 | R/W | Access bit | | 0:No Access / 1:Access
+0xA1 | R | Error | | Bit: 1:LESS_6A / 2:NO_COMM / 4:TEMP_HIGH / 8:NO_CURRENT / 16:RCD / 32:NO_SUN
+0xA2 | R | Maximum charging current | A |
+0xA3 | R | Minimum charging current | A |
+0xA4 | R | Number of used phaes (Not implemented) | | 0:Undetected / 1 - 3
+0xA5 | R | Real charging current (Not implemented) | 0.1 A |
+0xA6 | R | Charging current | 0.1 A |
+0xA7 | R/W | Access bit | | 0:No Access / 1:Access
 
 ## Register 0xC*: Configuration
 
