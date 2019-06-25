@@ -100,6 +100,7 @@ Register | Access | Description | Unit | Values
 0xA5 | R | Real charging current (Not implemented) | 0.1 A |
 0xA6 | R | Charging current | 0.1 A |
 0xA7 | R/W | Access bit | | 0:No Access / 1:Access
+0xA8 | R/W | EVSE mode (without saving) | | 0:Normal / 1:Smart / 2:Solar
 
 ## Register 0xC*: Configuration
 
