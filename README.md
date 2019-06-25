@@ -78,11 +78,11 @@ Information on how to compile and setup the controller can be found on the [smar
 
 # Predefined electric meters
 
-- Sensorbox (1, 2)
-- PHOENIX CONTACT EEM-350-D-MCB (3)
-- Finder 7E.78.8.400.0212 (4)
-- Eastron SDM630 (5)
-- Custom (6)
+- Sensorbox (1)
+- PHOENIX CONTACT EEM-350-D-MCB (2)
+- Finder 7E.78.8.400.0212 (3)
+- Eastron SDM630 (4)
+- Custom (5)
 
 # Modbus registers
 
@@ -93,7 +93,7 @@ All registers are 16 bit unsigned integers.
 Register | Access | Description | Unit | Values
 --- | --- | --- | --- | ---
 0xA0 | R | State | | A-D (EVSE State), E-H (A-D Waiting for Balance Master)
-0xA1 | R | Error | | Bit: 1:LESS_6A / 2:NO_COMM / 4:TEMP_HIGH / 8:NO_CURRENT / 16:RCD / 32:NO_SUN
+0xA1 | R | Error | Bit | 1:LESS_6A / 2:NO_COMM / 4:TEMP_HIGH / 8:NO_CURRENT / 16:RCD / 32:NO_SUN
 0xA2 | R | Maximum charging current | A |
 0xA3 | R | Minimum charging current | A |
 0xA4 | R | Number of used phaes (Not implemented) | | 0:Undetected / 1 - 3
