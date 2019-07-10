@@ -112,7 +112,7 @@ Register | Access | Description | Unit | Values
 0xC3 | R/W | Cable Current limit | A | 13 - 80
 0xC4 | R/W | Cable lock | | 0:Disable / 1:Solenoid / 2:Motor
 0xC5 | R/W | Surplus energy start Current | A | 1 - 16
-0xC6 | R/W | Stop solar charging at 6A after this time | min | 0 - 60
+0xC6 | R/W | Stop solar charging at 6A after this time | min | 0:Disable / 1 - 60
 0xC7 | R/W | External Switch on IO2 | | 0:Disable / 1:Access Push-Button / 2:Access Switch / 3:Smart-Solar Push-Button / 4:Smart-Solar Switch
 0xC8 | R/W | Residual Current Monitor on IO3 | | 0:Disable / 1:Enable
 
