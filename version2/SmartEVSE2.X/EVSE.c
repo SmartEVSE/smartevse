@@ -1929,8 +1929,8 @@ void RS232cli(void) {
             printf(VERSION);
             printf(" for detailed instructions, see www.smartevse.org\r\n");
             printf(" Internal Temperature: %2u C\r\n", TempEVSE);
-            printf(" EVSE state: %c\r\n", State + 'A');
-            printf(" Cable Max Capacity: %d\r\n", MaxCapacity);
+            printf(" EVSE state: %c\r\n", State - 1 + 'A');
+            printf(" Cable limit: %uA  Max: %uA\r\n", MaxCapacity, MaxCurrent);
             printf("----------------------------------------------------------------------\r\n");
             for(i = 0; i < MenuItemsCount - 1; i++) {
                 printf("%-07s - %-50s - ", MenuStr[MenuItems[i]].Key, MenuStr[MenuItems[i]].Desc);
