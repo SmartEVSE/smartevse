@@ -113,6 +113,7 @@
 #define NO_SUN 32
 #define Test_IO 64
 #define BL_FLASH 128
+#define ERROR_CABLE_DEFECTIVE 256                                               // PP (Proximity Pilot) defective
 
 #define SOLENOID_LOCK   {LATAbits.LATA4 = 1;LATAbits.LATA5 = 0;}
 #define SOLENOID_UNLOCK {LATAbits.LATA4 = 0;LATAbits.LATA5 = 1;}
@@ -213,7 +214,7 @@ extern unsigned char EVSEMeterAddress;
 extern signed double Irms[3];                                                   // Momentary current per Phase (Amps *10) (23 = 2.3A)
 
 extern unsigned char State;
-extern unsigned char Error;
+extern unsigned int Error;
 extern unsigned char NextState;
 
 extern unsigned int MaxCapacity;                                                // Cable limit (Amps)(limited by the wire in the charge cable, set automatically, or manually if Config=Fixed Cable)

@@ -178,7 +178,7 @@ signed double Irms[3]={0, 0, 0};                                                
                                                                                 // Max 3 phases supported
 
 unsigned char State = STATE_A;
-unsigned char Error = NO_ERROR;
+unsigned int Error = NO_ERROR;
 unsigned char NextState;
 
 unsigned int MaxCapacity;                                                       // Cable limit (A) (limited by the wire in the charge cable, set automatically, or manually if Config=Fixed Cable)
@@ -889,11 +889,12 @@ unsigned char ReadPilot(void)                                                   
 
 void ProximityPin(void) {
     ADCON0 = 0b00000101;                                                        // ADC input AN1 (Proximity Pin)
-    delay(100);                                                                 // delay 100ms (blocking)
+    //delay(100);                                                               // delay 10ms (blocking)
     ADCON0bits.GO = 1;                                                          // initiate ADC conversion on the selected channel
     while (ADCON0bits.GO);                                                      // wait for conversion to finish (blocking)
 
-    MaxCapacity = 13;                                                           // No resistor, Max cable current = 13A
+    MaxCapacity = 0;                                                            // cable defective
+    if ((ADRES > 626) && (ADRES < 666)) MaxCapacity = 13;                       // Max cable current = 13A 1500R
     if ((ADRES > 394) && (ADRES < 434)) MaxCapacity = 16;                       // Max cable current = 16A	680R
     if ((ADRES > 175) && (ADRES < 193)) MaxCapacity = 32;                       // Max cable current = 32A	220R
     if ((ADRES > 88) && (ADRES < 98)) MaxCapacity = 63;                         // Max cable current = 63A	100R
@@ -2413,6 +2414,8 @@ void main(void) {
 
                 Error &= ~NO_SUN;
                 Error &= ~LESS_6A;
+                Error &= ~ERROR_CABLE_DEFECTIVE;
+
                 ChargeDelay = 0;                                                // Clear ChargeDelay when disconnected.
                 NextState = 0;
             } else if ( (pilot == PILOT_9V || pilot == STATE_A_TO_C) 
@@ -2424,26 +2427,39 @@ void main(void) {
                     {
                         DiodeCheck = 0;
                         ProximityPin();                                         // Sample Proximity Pin
-                        printf("Cable limit: %uA  Max: %uA \r\n", MaxCapacity, MaxCurrent);
-                        if (MaxCurrent > MaxCapacity) ChargeCurrent = MaxCapacity * 10; // Do not modify Max Cable Capacity or MaxCurrent (fix 2.05)
-                        else ChargeCurrent = MaxCurrent * 10;                   // Instead use new variable ChargeCurrent
 
-                        if (LoadBl > 1)                                         // Load Balancing : Slave 
-                        {
-                            // Send command to Master, followed by Max Charge Current
-                            ModbusWriteSingleRequest(LoadBl, 0x02, ChargeCurrent);
-                            printf("02 sent to Master, requested %.1f A\r\n", (double)ChargeCurrent/10);
-                            State = STATE_COMM_B;
-                            Timer = 0;                                          // Clear the Timer
-                        } else {                                                // Load Balancing: Master or Disabled
-                            BalancedMax[0] = MaxCapacity * 10;
-                            Balanced[0] = ChargeCurrent;                        // Set pilot duty cycle to ChargeCurrent (v2.15)
-                            BalancedState[0] = 1;                               // Mark as active
-                            State = STATE_B;                                    // switch to State B
-                            ActivationMode = 30;                                // Activation mode is triggered if state C is not entered in 30 seconds.
-                            BacklightTimer = BACKLIGHT;                         // Backlight ON
-                            BACKLIGHT_ON;
-                            printf("STATE A->B\r\n");
+                        if (MaxCapacity == 0) {
+                            if(!(Error & ERROR_CABLE_DEFECTIVE)) {
+                                printf("Cable Proximity Pilot defective!\r\n");
+                            }
+                            Error |= ERROR_CABLE_DEFECTIVE;
+                            NextState = STATE_A;
+                            count = 0;
+                            ChargeCurrent = 0;
+                        } else {
+                            printf("Cable limit: %uA  Max: %uA \r\n", MaxCapacity, MaxCurrent);
+                            Error &= ~ERROR_CABLE_DEFECTIVE;
+                        
+                            if (MaxCurrent > MaxCapacity) ChargeCurrent = MaxCapacity * 10; // Do not modify Max Cable Capacity or MaxCurrent (fix 2.05)
+                            else ChargeCurrent = MaxCurrent * 10;                   // Instead use new variable ChargeCurrent
+
+                            if (LoadBl > 1)                                         // Load Balancing : Slave 
+                            {
+                                // Send command to Master, followed by Max Charge Current
+                                ModbusWriteSingleRequest(LoadBl, 0x02, ChargeCurrent);
+                                printf("02 sent to Master, requested %.1f A\r\n", (double)ChargeCurrent/10);
+                                State = STATE_COMM_B;
+                                Timer = 0;                                          // Clear the Timer
+                            } else {                                                // Load Balancing: Master or Disabled
+                                BalancedMax[0] = MaxCapacity * 10;
+                                Balanced[0] = ChargeCurrent;                        // Set pilot duty cycle to ChargeCurrent (v2.15)
+                                BalancedState[0] = 1;                               // Mark as active
+                                State = STATE_B;                                    // switch to State B
+                                ActivationMode = 30;                                // Activation mode is triggered if state C is not entered in 30 seconds.
+                                BacklightTimer = BACKLIGHT;                         // Backlight ON
+                                BACKLIGHT_ON;
+                                printf("STATE A->B\r\n");
+                            }
                         }
                    }
                 } else {
