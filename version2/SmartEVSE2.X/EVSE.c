@@ -1537,7 +1537,8 @@ unsigned int getItemValue(unsigned char nav) {
             return Balanced[0];
         case STATUS_ACCESS:
             return Access_bit;
-
+        case STATUS_TEMP:
+            return TempEVSE;
         default:
             return 0;
     }
@@ -1653,10 +1654,11 @@ unsigned char mapModbusRegister2ItemID() { // Modbus.Register / Modbus.RegisterC
     // 0xA6: Charging current (A * 10)
     // 0xA7: Access bit
     // 0xA8: EVSE Mode
-    else if (Modbus.Register >= 0xA0 && Modbus.Register <= 0xA8) {
+    // 0xA9: Internal Temperature
+    else if (Modbus.Register >= 0xA0 && Modbus.Register <= 0xA9) {
         RegisterStart = 0xA0;
         ItemStart = STATUS_STATE;
-        Count = 9;
+        Count = 10;
     }
 
     // Register 0xC*: Configuration

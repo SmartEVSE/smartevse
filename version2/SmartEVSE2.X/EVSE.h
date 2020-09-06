@@ -160,6 +160,7 @@
 #define STATUS_CURRENT 70
 #define STATUS_ACCESS 71
 #define STATUS_MODE 72
+#define STATUS_TEMP 73
 
 #define EM_SENSORBOX 1                                                          // Mains meter types
 #define EM_PHOENIX_CONTACT 2
