@@ -86,6 +86,8 @@ Information on how to compile and setup the controller can be found on the [smar
 
 # Modbus registers
 
+Baudrate is 9600bps 8N1 (8bit, no parity bit, one stop bit)
+
 All registers are 16 bit unsigned integers.
 
 ## Register 0xA*: Current state
