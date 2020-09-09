@@ -478,6 +478,16 @@ void GLCD(void) {
             GLCD_print2(2, (const far char *) "BOOTLOADER");
             GLCD_print2(4, (const far char *) "UPDATE ERR");
             return;
+        } else if (Error & ERROR_LOCK) {
+            GLCD_print2(2, (const far char *) "ERROR");
+            GLCD_print2(4, (const far char *) "LOCK");
+            GLCD_print2(6, (const far char *) "FAILED");
+            return;
+        } else if (Error & ERROR_CABLE_DEFECTIVE) {
+            GLCD_print2(2, (const far char *) "ERROR");
+            GLCD_print2(4, (const far char *) "CABLE");
+            GLCD_print2(6, (const far char *) "DEFECTIVE");
+            return;
         }
     }
 

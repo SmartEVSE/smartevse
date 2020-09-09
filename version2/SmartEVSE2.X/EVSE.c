@@ -133,6 +133,7 @@ const far char StrNormal[]  = "Normal";
 const far char StrSolar[]   = "Solar";
 const far char StrSolenoid[] = "Solenoid";
 const far char StrMotor[]   = "Motor";
+const far char StrRelay[]   = "Relay";
 const far char StrDisabled[] = "Disabled";
 const far char StrLoadBl[5][9]  = {"Disabled", "Master", "Slave 1", "Slave 2", "Slave 3"};
 const far char StrSwitch[5][10] = {"Disabled", "Access B", "Access S", "Sma-Sol B", "Sma-Sol S"};
@@ -156,7 +157,7 @@ unsigned int MaxCurrent = MAX_CURRENT;                                          
 unsigned int MinCurrent = MIN_CURRENT;                                          // Minimal current the EV is happy with (A)
 double ICal = ICAL;                                                             // CT calibration value
 char Mode = MODE;                                                               // EVSE mode (0:Normal / 1:Smart)
-char Lock = LOCK;                                                               // Cable lock (0:Disable / 1:Solenoid / 2:Motor)
+char Lock = LOCK;                                                               // Cable lock (0:Disable / 1:Solenoid / 2:Motor / 3:Relay)
 unsigned int MaxCircuit = MAX_CIRCUIT;                                          // Max current of the EVSE circuit (A)
 char Config = CONFIG;                                                           // Configuration (0:Socket / 1:Fixed Cable)
 char LoadBl = LOADBL;                                                           // Load Balance Setting (0:Disable / 1:Master / 2-4:Slave)
@@ -364,6 +365,20 @@ void interrupt high_isr(void)
                     } else locktimer = 700;
                 }
                 unlocktimer = 0;
+            }
+        } else if (Lock == 3) {                                                // Cable lock type Relay?
+            if (Error || (State != STATE_C && NextState != STATE_C)) {
+                SOLENOID_REALY_OFF;
+                locktimer = 0;
+            } else {                                                           // State C or NextState C
+                SOLENOID_REALY_ON;
+                if (locktimer++ > SOLENOID_REALY_DELAY_MAX) {
+                    if (PORTCbits.RC1 == 1) {                                  // still unlocked...
+                        Error |= ERROR_LOCK;
+                    } else {
+                        Error &= ~ERROR_LOCK;
+                    }
+                }
             }
         }
 
@@ -1311,7 +1326,7 @@ unsigned char getMenuItems (void) {
 
     MenuItems[m++] = MENU_CONFIG;                                               // Configuration (0:Socket / 1:Fixed Cable)
     if (!Config) {                                                              // ? Fixed Cable?
-        MenuItems[m++] = MENU_LOCK;                                             // - Cable lock (0:Disable / 1:Solenoid / 2:Motor)
+        MenuItems[m++] = MENU_LOCK;                                             // - Cable lock (0:Disable / 1:Solenoid / 2:Motor / 3:Relay)
     }
     MenuItems[m++] = MENU_MODE;                                                 // EVSE mode (0:Normal / 1:Smart)
     if (Mode == MODE_SOLAR && LoadBl < 2) {                                     // ? Solar mode and Load Balancing Disabled/Master?
@@ -1584,6 +1599,7 @@ const far char * getMenuItemOption(unsigned char nav) {
         case MENU_LOCK:
             if (Lock == 1) return StrSolenoid;
             else if (Lock == 2) return StrMotor;
+            else if (Lock == 3) return StrRelay;
             else return StrDisabled;
         case MENU_SWITCH:
             return StrSwitch[Switch];
@@ -1793,7 +1809,7 @@ void WriteMultipleItemValueResponse(unsigned char ItemID) {
 // MAX    - Set MAX Charge Current for the EV (16-80)
 // MIN    - Set MIN Charge Current the EV will accept
 // CAL    - Calibrate CT1
-// LOCK   - Cable lock Disable/Solenoid/Motor
+// LOCK   - Cable lock Disable/Solenoid/Motor/Relay
 // ACCESS - Access control on IO2                    
 // RCMON  - Residual Current Monitor on IO3
 // L1: 1.2A L2: 5.3A L3: 0.4A (MAX:26A MIN:10A)
@@ -1842,6 +1858,9 @@ void RS232cli(void) {
                     write_settings();
                 } else if (strcmp(U2buffer, (const far char *) "MOTOR") == 0) {
                     Lock = 2;
+                    write_settings();
+                } else if (strcmp(U2buffer, (const far char *) "RELAY") == 0) {
+                    Lock = 3;
                     write_settings();
                 } else if (strcmp(U2buffer, (const far char *) "DISABLE") == 0) {
                     Lock = 0;
@@ -1985,7 +2004,7 @@ void RS232cli(void) {
             printf("EVSE Circuit Current limit set to: %u A\r\nEnter new limit (10-80): ", MaxCircuit);
             break;
         case MENU_LOCK:
-            printf("Cable lock set to : %s\r\nEnter new Cable lock mode (DISABLE/SOLENOID/MOTOR): ", getMenuItemOption(menu));
+            printf("Cable lock set to : %s\r\nEnter new Cable lock mode (DISABLE/SOLENOID/MOTOR/RELAY): ", getMenuItemOption(menu));
             break;
         case MENU_SWITCH:
             printf("Access Control on pin SW set to : %s\r\nAccess Control on SW (%s", getMenuItemOption(menu), StrSwitch[0]);
@@ -2419,6 +2438,7 @@ void main(void) {
                 Error &= ~NO_SUN;
                 Error &= ~LESS_6A;
                 Error &= ~ERROR_CABLE_DEFECTIVE;
+                Error &= ~ERROR_LOCK;
 
                 ChargeDelay = 0;                                                // Clear ChargeDelay when disconnected.
                 NextState = 0;
@@ -2517,7 +2537,17 @@ void main(void) {
                                     Timer = 0;                                  // Clear the Timer
                                 } else {                                        // Load Balancing: Master or Disabled
                                     BalancedMax[0] = ChargeCurrent;
-                                    if (IsCurrentAvailable() == 0) {
+                                    if (Lock == 3) {
+                                        SOLENOID_REALY_ON;
+                                        // wait for Lock to engage
+                                        // do not enable Contactor befor Lock
+                                        Timer = 0;
+                                        while(PORTCbits.RC1 == 1 && Timer <= SOLENOID_REALY_DELAY_MAX);
+                                    }
+                                    if (Lock == 3 && PORTCbits.RC1 == 1) {      // still unlocked...
+                                        Error |= ERROR_LOCK;
+                                        printf("Error Lock Failed\r\n");
+                                    } else if (IsCurrentAvailable() == 0) {
                                         BalancedState[0] = 2;                   // Mark as Charging
                                         Balanced[0] = 0;                        // For correct baseload calculation set current to zero
                                         CalcBalancedCurrent(1);                 // Calculate charge current for all connected EVSE's
@@ -2951,21 +2981,33 @@ void main(void) {
                             if (Modbus.Value == 0)                              // If chargecurrent is zero, No current is available.
                             {
                                 Error |= NOCURRENT;
-                                DEBUG_PRINT(("83 ACK "));                       // No current available
+                                DEBUG_PRINT(("83 ACK "));                       // No current available                                                        
                             } else {
-                                SetCurrent(Modbus.Value);
-                                CONTACTOR_ON;                                   // Contactor ON
-                                DiodeCheck = 0;
-                                State = STATE_C;                                // switch to STATE_C
-                                ActivationMode = 255;                           // Disable ActivationMode  
-                                LCDTimer = 0;
-                                Timer = 0;                                      // reset msTimer and ChargeTimer
-                                if (!LCDNav)                                    // Don't update the LCD if we are navigating the menu
-                                {
-                                    GLCD();                                     // immediately update LCD
+                                if (Lock == 3) {
+                                    SOLENOID_REALY_ON;
+                                    // wait for Lock to engage
+                                    // do not enable Contactor befor Lock
+                                    Timer = 0;
+                                    while(PORTCbits.RC1 == 1 && Timer <= SOLENOID_REALY_DELAY_MAX);
                                 }
-                                DEBUG_PRINT(("83 ACK State C charge current: %.1f A\r\n", (double)Modbus.Value/10));
-                                printf("STATE B->C\r\n");
+                                if (Lock == 3 && PORTCbits.RC1 == 1) {          // still unlocked...
+                                    Error |= ERROR_LOCK;
+                                    printf("Error Lock Failed\r\n");
+                                } else {
+                                    SetCurrent(Modbus.Value);
+                                    CONTACTOR_ON;                                   // Contactor ON
+                                    DiodeCheck = 0;
+                                    State = STATE_C;                                // switch to STATE_C
+                                    ActivationMode = 255;                           // Disable ActivationMode  
+                                    LCDTimer = 0;
+                                    Timer = 0;                                      // reset msTimer and ChargeTimer
+                                    if (!LCDNav)                                    // Don't update the LCD if we are navigating the menu
+                                    {
+                                        GLCD();                                     // immediately update LCD
+                                    }
+                                    DEBUG_PRINT(("83 ACK State C charge current: %.1f A\r\n", (double)Modbus.Value/10));
+                                    printf("STATE B->C\r\n");
+                                }
                             }
                             break;
                         case 0x84:                                              // Charging Stopped, State B

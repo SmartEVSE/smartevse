@@ -114,10 +114,15 @@
 #define Test_IO 64
 #define BL_FLASH 128
 #define ERROR_CABLE_DEFECTIVE 256                                               // PP (Proximity Pilot) defective
+#define ERROR_LOCK 512                                                          // Lock failed
 
 #define SOLENOID_LOCK   {LATAbits.LATA4 = 1;LATAbits.LATA5 = 0;}
 #define SOLENOID_UNLOCK {LATAbits.LATA4 = 0;LATAbits.LATA5 = 1;}
 #define SOLENOID_OFF    {LATAbits.LATA4 = 1;LATAbits.LATA5 = 1;}
+
+#define SOLENOID_REALY_DELAY_MAX  1000                                          // max wait time for Lock in Realy mode
+#define SOLENOID_REALY_ON   {LATAbits.LATA4 = 0;LATAbits.LATA5 = 1;}
+#define SOLENOID_REALY_OFF  {LATAbits.LATA4 = 0;LATAbits.LATA5 = 0;}
 
 #define CONTACTOR_OFF LATBbits.LATB4 = 0;                                       // Contactor OFF
 #define CONTACTOR_ON  LATBbits.LATB4 = 1;                                       // Contactor ON
@@ -260,7 +265,7 @@ const far struct {
     {"LOADBL", "LOAD BAL", "Set Load Balancing mode for 2-4 SmartEVSEs", 0, 4, LOADBL},
     {"MIN",    "MIN",      "Set MIN Charge Current the EV will accept", 6, 16, MIN_CURRENT},
     {"CIRCUIT","CIRCUIT",  "Set EVSE Circuit max Current", 10, 80, MAX_CIRCUIT},
-    {"LOCK",   "LOCK",     "Cable locking actuator type", 0, 2, LOCK},
+    {"LOCK",   "LOCK",     "Cable locking actuator type", 0, 3, LOCK},
     {"START",  "START",    "Surplus energy start Current", 1, 16, START_CURRENT},
     {"STOP",   "STOP",     "Stop solar charging at 6A after this time", 0, 60, STOP_TIME},
     {"IMPORT", "IMPORT",   "Allow grid power when solar charging", 0, 6, IMPORT_CURRENT},
