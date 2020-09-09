@@ -428,6 +428,7 @@ void GLCD(void) {
     unsigned int seconds, minutes;
     static unsigned char energy_mains = 20; // X position
     static unsigned char energy_ev = 74; // X position
+    unsigned char buf[8] = {0};
 
     if (LCDNav) {
         if (LCDTimer++ == 120) {
@@ -477,6 +478,16 @@ void GLCD(void) {
             GLCD_print2(2, (const far char *) "BOOTLOADER");
             GLCD_print2(4, (const far char *) "UPDATE ERR");
             return;
+        } else if (Error & ERROR_LOCK) {
+            GLCD_print2(2, (const far char *) "ERROR");
+            GLCD_print2(4, (const far char *) "LOCK");
+            GLCD_print2(6, (const far char *) "FAILED");
+            return;
+        } else if (Error & ERROR_CABLE_DEFECTIVE) {
+            GLCD_print2(2, (const far char *) "ERROR");
+            GLCD_print2(4, (const far char *) "CABLE");
+            GLCD_print2(6, (const far char *) "DEFECTIVE");
+            return;
         }
     }
 
@@ -516,8 +527,11 @@ void GLCD(void) {
         {                                                                       // STATE A and STATE B
             glcd_clrln(0, 0x00);
             glcd_clrln(1, 0x04); // horizontal line
-
-            if (Access_bit) {
+            if (Error) {
+                GLCD_print2(2, (const far char *) "ERROR");
+                sprintf(buf, "%d", Error);
+                GLCD_print2(4, (const far char *) &buf[0]);
+            } else if (Access_bit) {
                 GLCD_print2(2, (const far char *) "READY TO");
                 GLCD_print2(4, (const far char *) "CHARGE  ");
                 if (ChargeDelay) {                                              // show chargedelay

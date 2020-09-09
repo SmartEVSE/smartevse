@@ -1,0 +1,3 @@
+[submodule "external/cmake-microchip"]
+	path = external/cmake-microchip
+	url = git://github.com/Elemecca/cmake-microchip.git

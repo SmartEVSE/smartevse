@@ -133,6 +133,7 @@ const far char StrNormal[]  = "Normal";
 const far char StrSolar[]   = "Solar";
 const far char StrSolenoid[] = "Solenoid";
 const far char StrMotor[]   = "Motor";
+const far char StrRelay[]   = "Relay";
 const far char StrDisabled[] = "Disabled";
 const far char StrLoadBl[5][9]  = {"Disabled", "Master", "Slave 1", "Slave 2", "Slave 3"};
 const far char StrSwitch[5][10] = {"Disabled", "Access B", "Access S", "Sma-Sol B", "Sma-Sol S"};
@@ -156,7 +157,7 @@ unsigned int MaxCurrent = MAX_CURRENT;                                          
 unsigned int MinCurrent = MIN_CURRENT;                                          // Minimal current the EV is happy with (A)
 double ICal = ICAL;                                                             // CT calibration value
 char Mode = MODE;                                                               // EVSE mode (0:Normal / 1:Smart)
-char Lock = LOCK;                                                               // Cable lock (0:Disable / 1:Solenoid / 2:Motor)
+char Lock = LOCK;                                                               // Cable lock (0:Disable / 1:Solenoid / 2:Motor / 3:Relay)
 unsigned int MaxCircuit = MAX_CIRCUIT;                                          // Max current of the EVSE circuit (A)
 char Config = CONFIG;                                                           // Configuration (0:Socket / 1:Fixed Cable)
 char LoadBl = LOADBL;                                                           // Load Balance Setting (0:Disable / 1:Master / 2-4:Slave)
@@ -178,7 +179,7 @@ signed double Irms[3]={0, 0, 0};                                                
                                                                                 // Max 3 phases supported
 
 unsigned char State = STATE_A;
-unsigned char Error = NO_ERROR;
+unsigned int Error = NO_ERROR;
 unsigned char NextState;
 
 unsigned int MaxCapacity;                                                       // Cable limit (A) (limited by the wire in the charge cable, set automatically, or manually if Config=Fixed Cable)
@@ -364,6 +365,20 @@ void interrupt high_isr(void)
                     } else locktimer = 700;
                 }
                 unlocktimer = 0;
+            }
+        } else if (Lock == 3) {                                                // Cable lock type Relay?
+            if (Error || (State != STATE_C && NextState != STATE_C)) {
+                SOLENOID_REALY_OFF;
+                locktimer = 0;
+            } else {                                                           // State C or NextState C
+                SOLENOID_REALY_ON;
+                if (locktimer++ > SOLENOID_REALY_DELAY_MAX) {
+                    if (PORTCbits.RC1 == 1) {                                  // still unlocked...
+                        Error |= ERROR_LOCK;
+                    } else {
+                        Error &= ~ERROR_LOCK;
+                    }
+                }
             }
         }
 
@@ -889,11 +904,12 @@ unsigned char ReadPilot(void)                                                   
 
 void ProximityPin(void) {
     ADCON0 = 0b00000101;                                                        // ADC input AN1 (Proximity Pin)
-    delay(100);                                                                 // delay 100ms (blocking)
+    //delay(100);                                                               // delay 10ms (blocking)
     ADCON0bits.GO = 1;                                                          // initiate ADC conversion on the selected channel
     while (ADCON0bits.GO);                                                      // wait for conversion to finish (blocking)
 
-    MaxCapacity = 13;                                                           // No resistor, Max cable current = 13A
+    MaxCapacity = 0;                                                            // cable defective
+    if ((ADRES > 626) && (ADRES < 666)) MaxCapacity = 13;                       // Max cable current = 13A 1500R
     if ((ADRES > 394) && (ADRES < 434)) MaxCapacity = 16;                       // Max cable current = 16A	680R
     if ((ADRES > 175) && (ADRES < 193)) MaxCapacity = 32;                       // Max cable current = 32A	220R
     if ((ADRES > 88) && (ADRES < 98)) MaxCapacity = 63;                         // Max cable current = 63A	100R
@@ -1310,7 +1326,7 @@ unsigned char getMenuItems (void) {
 
     MenuItems[m++] = MENU_CONFIG;                                               // Configuration (0:Socket / 1:Fixed Cable)
     if (!Config) {                                                              // ? Fixed Cable?
-        MenuItems[m++] = MENU_LOCK;                                             // - Cable lock (0:Disable / 1:Solenoid / 2:Motor)
+        MenuItems[m++] = MENU_LOCK;                                             // - Cable lock (0:Disable / 1:Solenoid / 2:Motor / 3:Relay)
     }
     MenuItems[m++] = MENU_MODE;                                                 // EVSE mode (0:Normal / 1:Smart)
     if (Mode == MODE_SOLAR && LoadBl < 2) {                                     // ? Solar mode and Load Balancing Disabled/Master?
@@ -1536,7 +1552,8 @@ unsigned int getItemValue(unsigned char nav) {
             return Balanced[0];
         case STATUS_ACCESS:
             return Access_bit;
-
+        case STATUS_TEMP:
+            return TempEVSE;
         default:
             return 0;
     }
@@ -1582,6 +1599,7 @@ const far char * getMenuItemOption(unsigned char nav) {
         case MENU_LOCK:
             if (Lock == 1) return StrSolenoid;
             else if (Lock == 2) return StrMotor;
+            else if (Lock == 3) return StrRelay;
             else return StrDisabled;
         case MENU_SWITCH:
             return StrSwitch[Switch];
@@ -1652,10 +1670,11 @@ unsigned char mapModbusRegister2ItemID() { // Modbus.Register / Modbus.RegisterC
     // 0xA6: Charging current (A * 10)
     // 0xA7: Access bit
     // 0xA8: EVSE Mode
-    else if (Modbus.Register >= 0xA0 && Modbus.Register <= 0xA8) {
+    // 0xA9: Internal Temperature
+    else if (Modbus.Register >= 0xA0 && Modbus.Register <= 0xA9) {
         RegisterStart = 0xA0;
         ItemStart = STATUS_STATE;
-        Count = 9;
+        Count = 10;
     }
 
     // Register 0xC*: Configuration
@@ -1790,7 +1809,7 @@ void WriteMultipleItemValueResponse(unsigned char ItemID) {
 // MAX    - Set MAX Charge Current for the EV (16-80)
 // MIN    - Set MIN Charge Current the EV will accept
 // CAL    - Calibrate CT1
-// LOCK   - Cable lock Disable/Solenoid/Motor
+// LOCK   - Cable lock Disable/Solenoid/Motor/Relay
 // ACCESS - Access control on IO2                    
 // RCMON  - Residual Current Monitor on IO3
 // L1: 1.2A L2: 5.3A L3: 0.4A (MAX:26A MIN:10A)
@@ -1839,6 +1858,9 @@ void RS232cli(void) {
                     write_settings();
                 } else if (strcmp(U2buffer, (const far char *) "MOTOR") == 0) {
                     Lock = 2;
+                    write_settings();
+                } else if (strcmp(U2buffer, (const far char *) "RELAY") == 0) {
+                    Lock = 3;
                     write_settings();
                 } else if (strcmp(U2buffer, (const far char *) "DISABLE") == 0) {
                     Lock = 0;
@@ -1926,6 +1948,8 @@ void RS232cli(void) {
             printf(VERSION);
             printf(" for detailed instructions, see www.smartevse.org\r\n");
             printf(" Internal Temperature: %2u C\r\n", TempEVSE);
+            printf(" EVSE state: %c\r\n", State - 1 + 'A');
+            printf(" Cable limit: %uA  Max: %uA\r\n", MaxCapacity, MaxCurrent);
             printf("----------------------------------------------------------------------\r\n");
             for(i = 0; i < MenuItemsCount - 1; i++) {
                 printf("%-07s - %-50s - ", MenuStr[MenuItems[i]].Key, MenuStr[MenuItems[i]].Desc);
@@ -1980,7 +2004,7 @@ void RS232cli(void) {
             printf("EVSE Circuit Current limit set to: %u A\r\nEnter new limit (10-80): ", MaxCircuit);
             break;
         case MENU_LOCK:
-            printf("Cable lock set to : %s\r\nEnter new Cable lock mode (DISABLE/SOLENOID/MOTOR): ", getMenuItemOption(menu));
+            printf("Cable lock set to : %s\r\nEnter new Cable lock mode (DISABLE/SOLENOID/MOTOR/RELAY): ", getMenuItemOption(menu));
             break;
         case MENU_SWITCH:
             printf("Access Control on pin SW set to : %s\r\nAccess Control on SW (%s", getMenuItemOption(menu), StrSwitch[0]);
@@ -2413,6 +2437,9 @@ void main(void) {
 
                 Error &= ~NO_SUN;
                 Error &= ~LESS_6A;
+                Error &= ~ERROR_CABLE_DEFECTIVE;
+                Error &= ~ERROR_LOCK;
+
                 ChargeDelay = 0;                                                // Clear ChargeDelay when disconnected.
                 NextState = 0;
             } else if ( (pilot == PILOT_9V || pilot == STATE_A_TO_C) 
@@ -2424,26 +2451,39 @@ void main(void) {
                     {
                         DiodeCheck = 0;
                         ProximityPin();                                         // Sample Proximity Pin
-                        printf("Cable limit: %uA  Max: %uA \r\n", MaxCapacity, MaxCurrent);
-                        if (MaxCurrent > MaxCapacity) ChargeCurrent = MaxCapacity * 10; // Do not modify Max Cable Capacity or MaxCurrent (fix 2.05)
-                        else ChargeCurrent = MaxCurrent * 10;                   // Instead use new variable ChargeCurrent
 
-                        if (LoadBl > 1)                                         // Load Balancing : Slave 
-                        {
-                            // Send command to Master, followed by Max Charge Current
-                            ModbusWriteSingleRequest(LoadBl, 0x02, ChargeCurrent);
-                            printf("02 sent to Master, requested %.1f A\r\n", (double)ChargeCurrent/10);
-                            State = STATE_COMM_B;
-                            Timer = 0;                                          // Clear the Timer
-                        } else {                                                // Load Balancing: Master or Disabled
-                            BalancedMax[0] = MaxCapacity * 10;
-                            Balanced[0] = ChargeCurrent;                        // Set pilot duty cycle to ChargeCurrent (v2.15)
-                            BalancedState[0] = 1;                               // Mark as active
-                            State = STATE_B;                                    // switch to State B
-                            ActivationMode = 30;                                // Activation mode is triggered if state C is not entered in 30 seconds.
-                            BacklightTimer = BACKLIGHT;                         // Backlight ON
-                            BACKLIGHT_ON;
-                            printf("STATE A->B\r\n");
+                        if (MaxCapacity == 0) {
+                            if(!(Error & ERROR_CABLE_DEFECTIVE)) {
+                                printf("Cable Proximity Pilot defective!\r\n");
+                            }
+                            Error |= ERROR_CABLE_DEFECTIVE;
+                            NextState = STATE_A;
+                            count = 0;
+                            ChargeCurrent = 0;
+                        } else {
+                            printf("Cable limit: %uA  Max: %uA \r\n", MaxCapacity, MaxCurrent);
+                            Error &= ~ERROR_CABLE_DEFECTIVE;
+                        
+                            if (MaxCurrent > MaxCapacity) ChargeCurrent = MaxCapacity * 10; // Do not modify Max Cable Capacity or MaxCurrent (fix 2.05)
+                            else ChargeCurrent = MaxCurrent * 10;                   // Instead use new variable ChargeCurrent
+
+                            if (LoadBl > 1)                                         // Load Balancing : Slave 
+                            {
+                                // Send command to Master, followed by Max Charge Current
+                                ModbusWriteSingleRequest(LoadBl, 0x02, ChargeCurrent);
+                                printf("02 sent to Master, requested %.1f A\r\n", (double)ChargeCurrent/10);
+                                State = STATE_COMM_B;
+                                Timer = 0;                                          // Clear the Timer
+                            } else {                                                // Load Balancing: Master or Disabled
+                                BalancedMax[0] = MaxCapacity * 10;
+                                Balanced[0] = ChargeCurrent;                        // Set pilot duty cycle to ChargeCurrent (v2.15)
+                                BalancedState[0] = 1;                               // Mark as active
+                                State = STATE_B;                                    // switch to State B
+                                ActivationMode = 30;                                // Activation mode is triggered if state C is not entered in 30 seconds.
+                                BacklightTimer = BACKLIGHT;                         // Backlight ON
+                                BACKLIGHT_ON;
+                                printf("STATE A->B\r\n");
+                            }
                         }
                    }
                 } else {
@@ -2497,7 +2537,17 @@ void main(void) {
                                     Timer = 0;                                  // Clear the Timer
                                 } else {                                        // Load Balancing: Master or Disabled
                                     BalancedMax[0] = ChargeCurrent;
-                                    if (IsCurrentAvailable() == 0) {
+                                    if (Lock == 3) {
+                                        SOLENOID_REALY_ON;
+                                        // wait for Lock to engage
+                                        // do not enable Contactor befor Lock
+                                        Timer = 0;
+                                        while(PORTCbits.RC1 == 1 && Timer <= SOLENOID_REALY_DELAY_MAX);
+                                    }
+                                    if (Lock == 3 && PORTCbits.RC1 == 1) {      // still unlocked...
+                                        Error |= ERROR_LOCK;
+                                        printf("Error Lock Failed\r\n");
+                                    } else if (IsCurrentAvailable() == 0) {
                                         BalancedState[0] = 2;                   // Mark as Charging
                                         Balanced[0] = 0;                        // For correct baseload calculation set current to zero
                                         CalcBalancedCurrent(1);                 // Calculate charge current for all connected EVSE's
@@ -2931,21 +2981,33 @@ void main(void) {
                             if (Modbus.Value == 0)                              // If chargecurrent is zero, No current is available.
                             {
                                 Error |= NOCURRENT;
-                                DEBUG_PRINT(("83 ACK "));                       // No current available
+                                DEBUG_PRINT(("83 ACK "));                       // No current available                                                        
                             } else {
-                                SetCurrent(Modbus.Value);
-                                CONTACTOR_ON;                                   // Contactor ON
-                                DiodeCheck = 0;
-                                State = STATE_C;                                // switch to STATE_C
-                                ActivationMode = 255;                           // Disable ActivationMode  
-                                LCDTimer = 0;
-                                Timer = 0;                                      // reset msTimer and ChargeTimer
-                                if (!LCDNav)                                    // Don't update the LCD if we are navigating the menu
-                                {
-                                    GLCD();                                     // immediately update LCD
+                                if (Lock == 3) {
+                                    SOLENOID_REALY_ON;
+                                    // wait for Lock to engage
+                                    // do not enable Contactor befor Lock
+                                    Timer = 0;
+                                    while(PORTCbits.RC1 == 1 && Timer <= SOLENOID_REALY_DELAY_MAX);
                                 }
-                                DEBUG_PRINT(("83 ACK State C charge current: %.1f A\r\n", (double)Modbus.Value/10));
-                                printf("STATE B->C\r\n");
+                                if (Lock == 3 && PORTCbits.RC1 == 1) {          // still unlocked...
+                                    Error |= ERROR_LOCK;
+                                    printf("Error Lock Failed\r\n");
+                                } else {
+                                    SetCurrent(Modbus.Value);
+                                    CONTACTOR_ON;                                   // Contactor ON
+                                    DiodeCheck = 0;
+                                    State = STATE_C;                                // switch to STATE_C
+                                    ActivationMode = 255;                           // Disable ActivationMode  
+                                    LCDTimer = 0;
+                                    Timer = 0;                                      // reset msTimer and ChargeTimer
+                                    if (!LCDNav)                                    // Don't update the LCD if we are navigating the menu
+                                    {
+                                        GLCD();                                     // immediately update LCD
+                                    }
+                                    DEBUG_PRINT(("83 ACK State C charge current: %.1f A\r\n", (double)Modbus.Value/10));
+                                    printf("STATE B->C\r\n");
+                                }
                             }
                             break;
                         case 0x84:                                              // Charging Stopped, State B
