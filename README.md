@@ -86,6 +86,8 @@ Information on how to compile and setup the controller can be found on the [smar
 
 # Modbus registers
 
+Baudrate is 9600bps 8N1 (8bit, no parity bit, one stop bit)
+
 All registers are 16 bit unsigned integers.
 
 ## Register 0xA*: Current state
@@ -96,9 +98,9 @@ Register | Access | Description | Unit | Values
 0xA1 | R | Error | Bit | 1:LESS_6A / 2:NO_COMM / 4:TEMP_HIGH / 8:NO_CURRENT / 16:RCD / 32:NO_SUN
 0xA2 | R | Maximum charging current | A |
 0xA3 | R | Minimum charging current | A |
-0xA4 | R | Number of used phaes (Not implemented) | | 0:Undetected / 1 - 3
+0xA4 | R | Number of used phases (Not implemented) | | 0:Undetected / 1 - 3
 0xA5 | R | Real charging current (Not implemented) | 0.1 A |
-0xA6 | R/W | Charging current | 0.1 A |
+0xA6 | R/W | Charging current | 0.1 A | 6 - 80
 0xA7 | R/W | Access bit | | 0:No Access / 1:Access
 0xA8 | R/W | EVSE mode (without saving) | | 0:Normal / 1:Smart / 2:Solar
 0xA9 | R | Internal Temperature in C°
