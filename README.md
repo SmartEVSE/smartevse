@@ -86,9 +86,31 @@ Information on how to compile and setup the controller can be found on the [smar
 
 # Modbus registers
 
-Baudrate is 9600bps 8N1 (8bit, no parity bit, one stop bit)
+Baudrate is 9600bps 8N1 (8bit, no parity bit, one stop bit)<br>
+All registers are 16 bit unsigned integers.<br>
 
-All registers are 16 bit unsigned integers.
+## Register 0x0*: Broadcast Chargecurrent or Error
+
+Register | Access | Description | Unit | Values
+--- | --- | --- | --- | ---
+0x01 | W | Broadcast ChargeCurrent | 0.1 A | Charge Current (0 A = no current available)
+0x02 | W | Broadcast Error | Bit | 1:LESS_6A / 2:NO_COMM / 4:TEMP_HIGH / 8:NO_CURRENT / 16:RCD / 32:NO_SUN
+
+Register 0x01 is written to every 2 seconds by the Master, and holds the Charge Current per Slave EVSE. A total of 4 words (8 bytes) are written, One word per EVSE(0-3).<br>
+Register 0x02 is written to only if an error occurred.<br>
+Use function code 0x10 (Preset Multiple Registers), and broadcast address 0x00 to use this feature.<br>
+
+## Register 0x8*: Ack State change
+
+Register | Access | Description | Unit | Values
+--- | --- | --- | --- | ---
+0x82 | W | Ack State A->B | 0.1 A | Charge Current (0 A = no current available)
+0x83 | W | Ack State B->C | 0.1 A | Charge Current (0 A = no current available)
+
+Register 0x82 and 0x83 are written by the Master to tell the Slave that it recognised a state change request.<br>
+If ok, the value of the register contains the initial chargecurrent (usually 6.0 A)<br>
+Use function code 0x06 (Preset Single Register) to write to these registers.<br>
+The Slave addresses are Slave nr +1 (2-4).<br>
 
 ## Register 0xA*: Current state
 
