@@ -167,6 +167,8 @@
 #define STATUS_MODE 72
 #define STATUS_TEMP 73
 
+#define EX_LOCK_MENU 100
+
 #define EM_SENSORBOX 1                                                          // Mains meter types
 #define EM_PHOENIX_CONTACT 2
 #define EM_FINDER 3
@@ -216,6 +218,8 @@ extern unsigned char PVMeter;                                                   
 extern unsigned char PVMeterAddress;
 extern unsigned char EVSEMeter;                                                 // Type of EVSE electric meter (0: Disabled / 10: Phoenix Contact / 20: Finder)
 extern unsigned char EVSEMeterAddress;
+
+extern unsigned char EX_disable_menu;
 
 extern signed double Irms[3];                                                   // Momentary current per Phase (Amps *10) (23 = 2.3A)
 

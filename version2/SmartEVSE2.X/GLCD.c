@@ -727,11 +727,13 @@ void GLCDMenu(unsigned char Buttons) {                                          
         Error &= ~RCD_TRIPPED;                                                  // Clear RCD error bit, by pressing any button
     }
         
-    if ((LCDNav == 0) && (Buttons == 0x5) && (ButtonRelease == 0))              // Button 2 pressed ?
+    if ((LCDNav == 0) && (Buttons == 0x5) && (ButtonRelease == 0)               // Button 2 pressed ?
+        && EX_disable_menu != 1)                                                // menu not disabled
     {
         LCDNav = MENU_ENTER;                                                    // about to enter menu
         ButtonTimer = Timer;
-    } else if (LCDNav == MENU_ENTER && ((ButtonTimer + 2000) < Timer))          // <CONFIG>
+    } else if (LCDNav == MENU_ENTER && ((ButtonTimer + 2000) < Timer)           // <CONFIG>
+                && EX_disable_menu != 1)                                        // menu not disabled
     {
         LCDNav = MENU_CONFIG;                                                   // Main Menu entered
         ButtonRelease = 1;

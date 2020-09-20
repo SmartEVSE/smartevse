@@ -119,6 +119,12 @@ Register | Access | Description | Unit | Values
 0xC7 | R/W | External Switch on IO2 | | 0:Disable / 1:Access Push-Button / 2:Access Switch / 3:Smart-Solar Push-Button / 4:Smart-Solar Switch
 0xC8 | R/W | Residual Current Monitor on IO3 | | 0:Disable / 1:Enable
 
+## Register 0xD*: Extended Configuration
+
+Register | Access | Description | Unit | Values
+--- | --- | --- | --- | ---
+0xD0 | R/W | Disable Menu | | 0: Menu Enabled  / 1: Menu Disable
+
 ## Register 0xE*: Load balancing configuration (same on all SmartEVSE)
 
 Register | Access | Description | Unit | Values

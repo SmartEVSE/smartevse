@@ -163,6 +163,9 @@ char Config = CONFIG;                                                           
 char LoadBl = LOADBL;                                                           // Load Balance Setting (0:Disable / 1:Master / 2-4:Slave)
 char Switch = SWITCH;                                                           // External Switch on I/O 2 (0:Disable / 1:Access / 2:Smart-Solar)
 char RCmon = RC_MON;                                                            // Residual Current Monitor on I/O 3 (0:Disable / 1:Enable)
+
+char EX_disable_menu = 0;                                                       // 0: Menu Enabled / 1: Menu Disable
+
 unsigned int StartCurrent = START_CURRENT;
 unsigned int StopTime = STOP_TIME;
 unsigned int ImportCurrent = IMPORT_CURRENT;
@@ -788,6 +791,8 @@ void validate_settings(void) {
     if (Mode == MODE_NORMAL) { MainsMeter = 0; PVMeter = 0; }
     // Disable PV reception if not configured
     if (MainsMeterMeasure == 0) PVMeter = 0;
+    // Menu default enabled
+    if (EX_disable_menu != 1) EX_disable_menu = 0;
 }
 
 void read_settings(void) {
@@ -824,6 +829,7 @@ void read_settings(void) {
     eeprom_read_object(&EMConfig[EM_CUSTOM].IDivisor, sizeof EMConfig[EM_CUSTOM].IDivisor);
     eeprom_read_object(&ImportCurrent, sizeof ImportCurrent);
     eeprom_read_object(&Grid, sizeof Grid);
+    eeprom_read_object(&EX_disable_menu, sizeof EX_disable_menu);
     
     validate_settings();
 
@@ -866,6 +872,7 @@ void write_settings(void) {
     eeprom_write_object(&EMConfig[EM_CUSTOM].IDivisor, sizeof EMConfig[EM_CUSTOM].IDivisor);
     eeprom_write_object(&ImportCurrent, sizeof ImportCurrent);
     eeprom_write_object(&Grid, sizeof Grid);
+    eeprom_write_object(&EX_disable_menu, sizeof EX_disable_menu);
     
     unlock55 = 0;                                                               // clear unlock values
     unlockAA = 0;
@@ -1476,6 +1483,11 @@ unsigned char setItemValue(unsigned char nav, unsigned int val) {
                     if (val == 0) State = STATE_A;
                 }
                 break;
+            case EX_LOCK_MENU:
+                EX_disable_menu = val;
+                if(EX_disable_menu != 1) EX_disable_menu = 0;
+                ret = 1;
+                break;
             default:
                 break;
         }
@@ -1539,6 +1551,9 @@ unsigned int getItemValue(unsigned char nav) {
             return EMConfig[EM_CUSTOM].IRegister;
         case MENU_EMCUSTOM_IDIVISOR:
             return EMConfig[EM_CUSTOM].IDivisor;
+
+        case EX_LOCK_MENU:
+            return EX_disable_menu;
 
         case STATUS_STATE:
             return State + (65 - STATE_A);
@@ -1693,6 +1708,14 @@ unsigned char mapModbusRegister2ItemID() { // Modbus.Register / Modbus.RegisterC
         Count = 9;
     }
 
+    // Register 0xD*: Extended Configuration
+    // 0xD0: Lock Menu / Disable Menu
+    else if (Modbus.Register >= 0xD0 && Modbus.Register <= 0xD0) {
+        RegisterStart = 0xD0;
+        ItemStart = EX_LOCK_MENU;
+        Count = 1;
+    }
+
     // Register 0xE*: Load balancing configuration (same on all SmartEVSE)
     // 0xE0: Max Charge Current of the system
     // 0xE1: EVSE mode
@@ -1754,7 +1777,7 @@ void WriteItemValueResponse(unsigned char ItemID) {
         OK = setItemValue(ItemID, Modbus.Value);
     }
 
-    if (OK && ItemID < STATUS_STATE) write_settings();
+    if (OK && (ItemID < STATUS_STATE || ItemID >= EX_LOCK_MENU)) write_settings();
 
     if (Modbus.Address > 0 || LoadBl == 0) {
         if (!ItemID) {
@@ -1782,7 +1805,7 @@ void WriteMultipleItemValueResponse(unsigned char ItemID) {
         }
     }
 
-    if (OK && ItemID < STATUS_STATE) write_settings();
+    if (OK && (ItemID < STATUS_STATE || ItemID >= EX_LOCK_MENU)) write_settings();
 
     if (Modbus.Address > 0 || LoadBl == 0) {
         if (!ItemID) {
