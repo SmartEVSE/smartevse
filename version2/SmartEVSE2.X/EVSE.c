@@ -618,7 +618,7 @@ void ModbusDecode(unsigned char *buf, unsigned char len) {
         // when checksum == 0 data is ok.
         if (!crc16(buf, len)) {
             // CRC OK
-        //    printf("\n  valid Modbus packet: Address %02x Function %02x", Modbus.Address, Modbus.Function);
+            // printf("\n\r  valid Modbus packet: Address %02x Function %02x", Modbus.Address, Modbus.Function);
             switch (Modbus.Function) {
                 case 0x04:
                     // (Read input register)
@@ -637,7 +637,7 @@ void ModbusDecode(unsigned char *buf, unsigned char len) {
                             // response packet
                             Modbus.Type = MODBUS_RESPONSE;
                         } else {
-                            printf("\nInvalid modbus packet");
+                            printf("\n\rInvalid modbus packet");
                         }
                     }
                     break;
@@ -653,7 +653,7 @@ void ModbusDecode(unsigned char *buf, unsigned char len) {
                         // value
                         Modbus.Value = (buf[4] <<8) | buf[5];
                     } else {
-                        printf("\nInvalid modbus packet");
+                        printf("\n\rInvalid modbus packet");
                     }
                     break;
                 case 0x10:
@@ -673,7 +673,7 @@ void ModbusDecode(unsigned char *buf, unsigned char len) {
                             // request packet
                             Modbus.Type = MODBUS_REQUEST;
                         } else {
-                            printf("\nInvalid modbus packet");
+                            printf("\n\rInvalid modbus packet");
                         }
                     }
                     break;
@@ -2866,7 +2866,7 @@ void main(void) {
 #endif            
             ModbusDecode(U1packet, ISRFLAG);
             if (Modbus.Type == MODBUS_RESPONSE) {
-                //printf("\nModbus Response Address %i / Function %02x / Register %02x",Modbus.Address,Modbus.Function,Modbus.Register);
+                //printf("\n\rModbus Response Address %i / Function %02x / Register %02x",Modbus.Address,Modbus.Function,Modbus.Register);
                 switch (Modbus.Function) {
                     case 0x04: // (Read input register)
                         if (MainsMeter && Modbus.Address == MainsMeterAddress && Modbus.Register == EMConfig[MainsMeter].IRegister) {
@@ -2895,7 +2895,7 @@ void main(void) {
                         break;
                 }
             } else if (Modbus.Type == MODBUS_REQUEST) {
-                //printf("\nModbus Request Address %i / Function %02x / Register %02x",Modbus.Address,Modbus.Function,Modbus.Register);
+                //printf("\n\rModbus Request Address %i / Function %02x / Register %02x",Modbus.Address,Modbus.Function,Modbus.Register);
                                                                                 // No timeout reset here, as it is a request, no response!!!! 
                 switch (Modbus.Function) {
                     case 0x04: // (Read input register)
@@ -2937,7 +2937,7 @@ void main(void) {
                             // 0x01: Balance currents
                             if (Modbus.Register == 0x01 && LoadBl > 1) {        // Message for Slave(s)
                                 BalancedReceived = (Modbus.Data[(LoadBl - 1) * 2] <<8) | Modbus.Data[(LoadBl - 1) * 2 + 1];
-                              //  printf("\n  Address %02x Register %02x BalancedReceived %i ", Modbus.Address, Modbus.Register, BalancedReceived);
+                              //  printf("\n\r  Address %02x Register %02x BalancedReceived %i ", Modbus.Address, Modbus.Register, BalancedReceived);
                                 DataReceived = 2;
                             }
                             
