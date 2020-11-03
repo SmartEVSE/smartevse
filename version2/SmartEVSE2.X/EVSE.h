@@ -43,6 +43,11 @@
 
 //#define MODBUSPRINT                                                             // debug print the modbus messages
 
+//#define PARITY_NONE
+//#define PARITY_EVEN
+//#define PARITY_ODD
+#define TWO_STOP_BITS
+
 #define ICAL 1.00                                                               // Irms Calibration value (for Current transformers) 
 #define MAX_MAINS 25                                                            // max Current the Mains connection can supply
 #define MAX_CURRENT 13                                                          // max charging Current for the EV
@@ -188,6 +193,17 @@
 #define _RSTB_1 LATCbits.LATC4 = 1;
 #define _A0_0 LATCbits.LATC0 = 0;
 #define _A0_1 LATCbits.LATC0 = 1;
+
+// Validate defines
+
+#if (defined(PARITY_NONE)?1:0 + defined(PARITY_EVEN)?1:0 + defined(PARITY_ODD)?1:0 + defined(TWO_STOP_BITS)?1:0) > 1
+    #error "Can only define one parity option!"
+#endif
+
+#if !defined(PARITY_NONE) && !defined(PARITY_EVEN) && !defined(PARITY_ODD) && !defined(TWO_STOP_BITS)
+    #error "Must define a parity option!"
+#endif
+
 
 extern char GLCDbuf[512];                                                       // GLCD buffer (half of the display)
 

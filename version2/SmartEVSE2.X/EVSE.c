@@ -249,6 +249,21 @@ struct  {
     unsigned char Requested;
 } Modbus;
 
+#if defined(PARITY_EVEN)
+int calc_even_parity(unsigned char v)
+{
+    v ^= v >> 4;
+    v &= 0xf;
+    return (0x6996 >> v) & 1;
+}
+#elif defined(PARITY_ODD)
+int calc_odd_parity(unsigned char v) {
+    v ^= v >> 4;
+    v &= 0xf;
+    return (0x9669 >> v) & 1;
+}
+#endif
+
 void interrupt high_isr(void)
 {
     // Determine what caused the interrupt
@@ -268,6 +283,13 @@ void interrupt high_isr(void)
 
     if (PIR1bits.TX1IF && PIE1bits.TX1IE)                                       // Uart1 transmit interrupt? RS485
     {
+#if defined(PARITY_EVEN)
+        TXSTA1 = (TXSTA1 & 0xFE) | calc_even_parity(U1TXbuffer[ISRTXFLAG++]);
+#elif defined(PARITY_ODD)
+        TXSTA1 = (TXSTA1 & 0xFE) | calc_odd_parity(U1TXbuffer[ISRTXFLAG++]);
+#elif defined(TWO_STOP_BITS)
+        TXSTA1 = (TXSTA1 & 0xFE) | 1;
+#endif
         TXREG1 = U1TXbuffer[ISRTXFLAG++];                                       // send character
         if ((ISRTXFLAG == ISRTXLEN)|| ISRTXFLAG == 50)                          // end of buffer
         {
@@ -2210,8 +2232,13 @@ void init(void) {
     SPBRG1 = 0xA0;                                                              // Baudrate 9600 
 
     BAUDCON1 = 0b00001000;                                                      // 16 bit Baudrate register is used
+#ifdef PARITY_NONE
     TXSTA1 = 0b00100100;                                                        // Enable TX, 8 bit, Asynchronous mode
     RCSTA1 = 0b10010000;                                                        // Enable serial port TX and RX, 8 bit. 
+#else 
+    TXSTA1 = 0b01100100;                                                        // Enable TX, 9 bit, Asynchronous mode
+    RCSTA1 = 0b11010000;                                                        // Enable serial port TX and RX, 8 bit. 
+#endif
 
     SPBRGH2 = 0;                                                                // Initialize UART 2
     SPBRG2 = 34;                                                                // Baudrate 115k2 (114285)
