@@ -115,7 +115,7 @@ unsigned int CalcCurrent();
 #pragma	config BORV = 285, BOREN = ON, PWRTEN = ON
 #pragma	config WDTPS = 2048, WDTEN = OFF                                        // WDT timeout
 #pragma config CCP2MX = PORTB3, PBADEN = OFF, CCP3MX = PORTC6                   // PortB digital IO
-#pragma config HFOFST = OFF, T3CMX = PORTB5, P2BMX = PORTC0, MCLRE = INTMCLR
+#pragma config HFOFST = OFF, T3CMX = PORTB5, P2BMX = PORTC0, MCLRE = EXTMCLR
 
 #pragma config XINST = OFF, DEBUG = OFF, LVP = OFF, STVREN = ON
 #pragma	config CP0 = OFF, CP1 = OFF, CP2 = OFF, CP3 = OFF, CPD = OFF, CPB = OFF
