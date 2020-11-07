@@ -176,6 +176,7 @@ unsigned char EVMeterAddress;
 
 signed double Irms[3]={0, 0, 0};                                                // Momentary current per Phase (Amps *10) (23 = 2.3A)
                                                                                 // Max 3 phases supported
+signed double EVIrms[3]={0, 0, 0};                                              // Momentary current per Phase for EV (Amps *10) (23 = 2.3A)
 
 unsigned char State = STATE_A;
 unsigned char Error = NO_ERROR;
@@ -427,15 +428,15 @@ void RS485SendBuf(char *buffer, unsigned char len) {
         U1TXbuffer[index++] = *buffer++;                                        // load next byte
     }
     
-    if (ModbusTimer > 6) {                                                      // No RS485 reception at the moment
+    if (ModbusTimer > MODBUS_REQUEST_INTERVAL) {                                // No RS485 reception at the moment
     
         if (Modbus.RequestDataFormat==DATAFORMAT_8N1) {
-            TXSTA1 = 0b00100100;                                                        // Enable TX, 8 bit, Asynchronous mode
-            RCSTA1 = 0b10010000;                                                        // Enable serial port TX and RX, 8 bit. 
+            TXSTA1 = 0b00100100;                                                // Enable TX, 8 bit, Asynchronous mode
+            RCSTA1 = 0b10010000;                                                // Enable serial port TX and RX, 8 bit. 
         }
         else {
-            TXSTA1 = 0b01100100;                                                        // Enable TX, 9 bit, Asynchronous mode
-            RCSTA1 = 0b11010000;                                                        // Enable serial port TX and RX, 9 bit. 
+            TXSTA1 = 0b01100100;                                                // Enable TX, 9 bit, Asynchronous mode
+            RCSTA1 = 0b11010000;                                                // Enable serial port TX and RX, 9 bit. 
         }
 
         LATBbits.LATB5 = 1;                                                     // set RS485 transceiver to transmit
@@ -1373,7 +1374,7 @@ unsigned char receiveCurrentMeasurement(unsigned char *buf, unsigned char Meter,
     switch(Meter) {
         case EM_SENSORBOX:
             // return immediately if the data contains no new P1 or CT measurement
-            if (buf[3] == 0) return 1;  // TODO: // error!!
+            if (buf[3] == 0) return 0; // error!!
             // determine if there is P1 data present, otherwise use CT data
             if (buf[3] & 0x80) offset = 16;                                     // P1 data present
             else offset = 28;                                                   // Use CTs
@@ -1753,7 +1754,7 @@ const far char * getMenuItemOption(unsigned char nav) {
         case MENU_EVMETERADDRESS:
         case MENU_EMCUSTOM_IREGISTER:
         case MENU_EMCUSTOM_EREGISTER:
-            sprintf(Str, "%u (%02X)", value, value);
+            sprintf(Str, "%u (%X)", value, value);
             return Str;
         case MENU_MAINSMETERMEASURE:
             if (MainsMeterMeasure) return StrMainsHomeEVSE;
@@ -2433,7 +2434,7 @@ void main(void) {
 
         if (ISR2FLAG) RS232cli();                                               // RS232 command line interface
 
-        if (DelayedRS485SendBuf && (ModbusTimer > 6)) {
+        if (DelayedRS485SendBuf && (ModbusTimer > MODBUS_REQUEST_INTERVAL)) {
 
             if (Modbus.RequestDataFormat==DATAFORMAT_8N1) {
                 TXSTA1 = 0b00100100;                                            // Enable TX, 8 bit, Asynchronous mode
@@ -2951,6 +2952,9 @@ void main(void) {
                     requestCurrentMeasurement(PVMeter, PVMeterAddress);
                     break;
                 case 3:
+                    requestCurrentMeasurement(EVMeter, EVMeterAddress);
+                    break;
+                case 4:
                     requestEnergyMeasurement(EVMeter, EVMeterAddress);
                     break;
             }
@@ -3001,21 +3005,24 @@ void main(void) {
 #endif            
             ModbusDecode(U1packet, ISRFLAG);
             if (Modbus.Type == MODBUS_RESPONSE) {
-                //printf("\nModbus Response Address %i / Function %02x / Register %02x",Modbus.Address,Modbus.Function,Modbus.Register);
+              //printf("\nModbus Response Address %i / Function %02x / Register %02x",Modbus.Address,Modbus.Function,Modbus.Register);
                 switch (Modbus.Function) {
                     case 0x03: // (Read holding register)
                     case 0x04: // (Read input register)
                         if (MainsMeter && Modbus.Address == MainsMeterAddress && Modbus.Register == EMConfig[MainsMeter].IRegister) {
                             // packet from Mains electric meter
                             x = receiveCurrentMeasurement(Modbus.Data, MainsMeter, Irms);
-                            if (x) timeout = 10;    // only reset timeout when data is ok
-                            if (PVMeter) {
+                            if (!x) {
+                                ModbusRequest = 1;                              // Retry on error
+                            } else if (PVMeter) {
                                 MainsReceived = 1;
-                                ModbusRequest = 2;
+                                ModbusRequest = 2; 
                             } else {
                                 UpdateCurrentData();
                                 if (EVMeter) {
                                     ModbusRequest = 3;
+                                } else {
+                                    timeout = 10;                               // only reset timeout when data is ok and all done
                                 }
                             }
                         } else if (MainsReceived && PVMeter && Modbus.Address == PVMeterAddress && Modbus.Register == EMConfig[PVMeter].IRegister) {
@@ -3024,18 +3031,26 @@ void main(void) {
                             for (x = 0; x < 3; x++) {
                                 Irms[x] = Irms[x] - PV[x];
                             }
-                            timeout = 10;
                             MainsReceived = 0;
                             UpdateCurrentData();
                             if (EVMeter) {
                                 ModbusRequest = 3;
+                            } else {
+                                timeout = 10;                                   // only reset timeout when all done
                             }
+                        } else if (EVMeter && Modbus.Address == EVMeterAddress && Modbus.Register == EMConfig[EVMeter].IRegister) {
+                            // packet from EV electric meter
+                            receiveCurrentMeasurement(Modbus.Data, EVMeter, EVIrms);
+
+                            ModbusRequest = 4;
                         } else if (EVMeter && Modbus.Address == EVMeterAddress && Modbus.Register == EMConfig[EVMeter].ERegister) {
-                            // packet from PV electric meter
+                            // packet from EV electric meter
                             EnergyEV = receiveEnergyMeasurement(Modbus.Data, EVMeter);
-                            timeout = 10;
-                            if (ResetKwh == 2) EnergyMeterStart = EnergyEV;      // At powerup, set EnergyEV to kwh meter value
+
+                            if (ResetKwh == 2) EnergyMeterStart = EnergyEV;     // At powerup, set EnergyEV to kwh meter value
                             if (EVMeter) EnergyCharged = EnergyEV - EnergyMeterStart; // Calculate Energy
+
+                            timeout = 10;                                       // only reset timeout when all done
                         }
                         break;
                     default:

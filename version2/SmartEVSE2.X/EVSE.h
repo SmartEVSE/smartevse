@@ -41,7 +41,8 @@
 //#define SPECIAL                                                                 // if defined, it will modify program so that some menu options are not shown
                                                                                 // should be undefined by default
 
-//#define MODBUSPRINT                                                             // debug print the modbus messages
+//#define MODBUSPRINT                                                           // debug print the modbus messages
+#define MODBUS_REQUEST_INTERVAL 100                                             // Minimum interval between modbus requests (set to 100ms to maximize compatibility)
 
 #define ICAL 1.00                                                               // Irms Calibration value (for Current transformers) 
 #define MAX_MAINS 25                                                            // max Current the Mains connection can supply
@@ -228,6 +229,7 @@ extern unsigned char EVMeter;                                                   
 extern unsigned char EVMeterAddress;
 
 extern signed double Irms[3];                                                   // Momentary current per Phase (Amps *10) (23 = 2.3A)
+extern double EVIrms[3];                                                        // Momentary current per Phase to the EV (Amps *10) (23 = 2.3A)
 
 extern unsigned char State;
 extern unsigned char Error;
@@ -284,7 +286,7 @@ struct {
     {"Phoenix C", ENDIANESS_HBF_LWF, DATAFORMAT_8N1, 4,    0xC, 3,   0x3E, 1,   0x28, 1}, // PHOENIX CONTACT EEM-350-D-MCB (mA / 0,1kWh / 0,1W)
     {"Finder",    ENDIANESS_HBF_HWF, DATAFORMAT_8N1, 4, 0x100E, 8, 0x1106, 8, 0x1026, 8}, // Finder 7E.78.8.400.0212 (A / Wh / W)
     {"Eastron",   ENDIANESS_HBF_HWF, DATAFORMAT_8N1, 4,    0x6, 8,  0x156, 8,   0x34, 8}, // Eastron SDM630 (Own routine for request/receive) (A / kWh / W)
-    {"YTL",       ENDIANESS_LBF_LWF, DATAFORMAT_8N2, 3,   0x16, 8,  0x102, 8,   0x2e, 8}, // YTL DTS353F-2
+    {"YTL",       ENDIANESS_HBF_HWF, DATAFORMAT_8N2, 3,   0x16, 8,  0x100, 8,   0x2e, 8}, // YTL DTS353F-2
     {"Custom",    ENDIANESS_LBF_LWF, DATAFORMAT_8N1, 4,      0, 0,      0, 0, 0xFFFF, 0}  // Last entry!
 };
 
@@ -324,9 +326,9 @@ const far struct {
     {"EVAD",   "EV ADDR",  "Address of EV electric meter", 5, 255, EV_METER_ADDRESS},
     {"EMBO" ,  "BYTE ORD", "Byte order of custom electric meter", 0, 3, EMCUSTOM_ENDIANESS},
     {"EMDF" ,  "PROTOCOL", "Data format of custom electric meter", 0, 3, EMCUSTOM_DATAFORMAT},
-    {"EMIREG", "CUR REGI", "Register for Current of custom electric meter", 0, 255, EMCUSTOM_IREGISTER},
+    {"EMIREG", "CUR REGI", "Register for Current of custom electric meter", 0, 65535, EMCUSTOM_IREGISTER},
     {"ENIDIV", "CUR DIVI", "Divisor for Current of custom electric meter", 0, 8, EMCUSTOM_IDIVISOR},
-    {"EMEREG", "ENE REGI", "Register for Energy of custom electric meter", 0, 255, EMCUSTOM_EREGISTER},
+    {"EMEREG", "ENE REGI", "Register for Energy of custom electric meter", 0, 65535, EMCUSTOM_EREGISTER},
     {"ENEDIV", "ENE DIVI", "Divisor for Energy of custom electric meter", 0, 8, EMCUSTOM_EDIVISOR},
     {"EXIT",   "EXIT",     "EXIT", 0, 0, 0}
 };
