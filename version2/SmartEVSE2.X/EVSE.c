@@ -176,6 +176,7 @@ unsigned char EVMeterAddress;
 
 signed double Irms[3]={0, 0, 0};                                                // Momentary current per Phase (Amps *10) (23 = 2.3A)
                                                                                 // Max 3 phases supported
+signed double EVIrms[3]={0, 0, 0};                                              // Momentary current per Phase for EV (Amps *10) (23 = 2.3A)
 
 unsigned char State = STATE_A;
 unsigned char Error = NO_ERROR;
@@ -218,7 +219,7 @@ unsigned char LedUpdate = 0;                                                    
 unsigned char LedCount = 0;                                                     // Raw Counter before being converted to PWM value
 unsigned char LedPwm = 0;                                                       // PWM value 0-255
 unsigned char ModbusRequest = 0;                                                // Flag to request Modbus information
-unsigned char MenuItems[27];
+unsigned char MenuItems[MENU_EXIT];
 unsigned char unlockMagic = 0;
 unsigned char unlock55 = 0;                                                     // unlock bytes set to 0 to prevent flash write at por   
 unsigned char unlockAA = 0;                                                     // unlock bytes set to 0 to prevent flash write at por
@@ -246,8 +247,21 @@ struct  {
     unsigned char RequestAddress;
     unsigned char RequestFunction;
     unsigned int RequestRegister;
+    unsigned char RequestDataFormat;
     unsigned char Requested;
 } Modbus;
+
+int calc_even_parity(unsigned char v)
+{
+    v ^= v >> 4;
+    v &= 0xf;
+    return (0x6996 >> v) & 1;
+}
+int calc_odd_parity(unsigned char v) {
+    v ^= v >> 4;
+    v &= 0xf;
+    return (0x9669 >> v) & 1;
+}
 
 void interrupt high_isr(void)
 {
@@ -268,6 +282,18 @@ void interrupt high_isr(void)
 
     if (PIR1bits.TX1IF && PIE1bits.TX1IE)                                       // Uart1 transmit interrupt? RS485
     {
+        switch (Modbus.RequestDataFormat) {
+        case DATAFORMAT_8N1:
+        case DATAFORMAT_8N2:
+            TXSTA1 = TXSTA1 | 0x01;
+            break;
+        case DATAFORMAT_8E1:
+            TXSTA1 = (TXSTA1 & 0xFE) | calc_even_parity(U1TXbuffer[ISRTXFLAG++]);
+            break;
+        case DATAFORMAT_8O1:
+            TXSTA1 = (TXSTA1 & 0xFE) | calc_odd_parity(U1TXbuffer[ISRTXFLAG++]);
+            break;
+        };
         TXREG1 = U1TXbuffer[ISRTXFLAG++];                                       // send character
         if ((ISRTXFLAG == ISRTXLEN)|| ISRTXFLAG == 50)                          // end of buffer
         {
@@ -391,6 +417,7 @@ void RS485SendBuf(char *buffer, unsigned char len) {
     unsigned char i,index = 0;
 
 #ifdef MODBUSPRINT
+    printf("Sending packet: ");
     for (i=0;i<len;i++) printf("%02X ",Tbuffer[i]);
     printf("\r\n");
 #endif    
@@ -401,11 +428,21 @@ void RS485SendBuf(char *buffer, unsigned char len) {
         U1TXbuffer[index++] = *buffer++;                                        // load next byte
     }
     
-    if (ModbusTimer > 6) {                                                      // No RS485 reception at the moment
+    if (ModbusTimer > MODBUS_REQUEST_INTERVAL) {                                // No RS485 reception at the moment
     
+        if (Modbus.RequestDataFormat==DATAFORMAT_8N1) {
+            TXSTA1 = 0b00100100;                                                // Enable TX, 8 bit, Asynchronous mode
+            RCSTA1 = 0b10010000;                                                // Enable serial port TX and RX, 8 bit. 
+        }
+        else {
+            TXSTA1 = 0b01100100;                                                // Enable TX, 9 bit, Asynchronous mode
+            RCSTA1 = 0b11010000;                                                // Enable serial port TX and RX, 9 bit. 
+        }
+
         LATBbits.LATB5 = 1;                                                     // set RS485 transceiver to transmit
         delay(1);
         PIE1bits.TX1IE = 1;                                                     // enable transmit Interrupt for RS485
+
     } else DelayedRS485SendBuf = 1;                                             // RS485 reception taking place, handle sending of frame in main loop
     
 }
@@ -460,17 +497,18 @@ void ModbusSend8(unsigned char address, unsigned char function, unsigned int reg
 }
 
 /**
- * Request read input register (FC=04) to a device over modbus
+ * Request read holding (FC=3) or input register (FC=04) to a device over modbus
  * 
  * @param unsigned char address
  * @param unsigned int register
  * @param unsigned int quantity
  */
-void ModbusReadInputRequest(unsigned char address, unsigned int reg, unsigned int quantity) {
+void ModbusReadInputRequest(unsigned char dataformat, unsigned char address, unsigned char function, unsigned int reg, unsigned int quantity) {
+    Modbus.RequestDataFormat = dataformat;
     Modbus.RequestAddress = address;
-    Modbus.RequestFunction = 0x04;
+    Modbus.RequestFunction = function;
     Modbus.RequestRegister = reg;
-    ModbusSend8(address, 0x04, reg, quantity);
+    ModbusSend8(address, function, reg, quantity);
 }
 
 /**
@@ -480,8 +518,9 @@ void ModbusReadInputRequest(unsigned char address, unsigned int reg, unsigned in
  * @param unsigned int pointer to values
  * @param unsigned char count of values
  */
-void ModbusReadInputResponse(unsigned char address, unsigned int *values, unsigned char count) {
-    ModbusSend(address, 0x04, count * 2u, values, count);
+void ModbusReadInputResponse(unsigned char address, unsigned char function, unsigned int *values, unsigned char count) {
+    Modbus.RequestDataFormat = DATAFORMAT_8N1;
+    ModbusSend(address, function, count * 2u, values, count);
 }
 
 /**
@@ -492,6 +531,7 @@ void ModbusReadInputResponse(unsigned char address, unsigned int *values, unsign
  * @param unsigned int value
  */
 void ModbusWriteSingleRequest(unsigned char address, unsigned int reg, unsigned int value) {
+    Modbus.RequestDataFormat = DATAFORMAT_8N1;
     Modbus.RequestAddress = address;
     Modbus.RequestFunction = 0x06;
     Modbus.RequestRegister = reg;
@@ -506,6 +546,7 @@ void ModbusWriteSingleRequest(unsigned char address, unsigned int reg, unsigned 
  * @param unsigned int value
  */
 void ModbusWriteSingleResponse(unsigned char address, unsigned int reg, unsigned int value) {
+    Modbus.RequestDataFormat = DATAFORMAT_8N1;
     ModbusSend8(address, 0x06, reg, value);  
 }
 
@@ -521,6 +562,7 @@ void ModbusWriteSingleResponse(unsigned char address, unsigned int reg, unsigned
 void ModbusWriteMultipleRequest(unsigned char address, unsigned int reg, unsigned int *values, unsigned char count) {
     unsigned int i, n = 0, cs;
 
+    Modbus.RequestDataFormat = DATAFORMAT_8N1;
     Modbus.RequestAddress = address;
     Modbus.RequestFunction = 0x10;
     Modbus.RequestRegister = reg;
@@ -559,6 +601,7 @@ void ModbusWriteMultipleRequest(unsigned char address, unsigned int reg, unsigne
  * @param unsigned int count
  */
 void ModbusWriteMultipleResponse(unsigned char address, unsigned int reg, unsigned int count) {
+    Modbus.RequestDataFormat = DATAFORMAT_8N1;
     ModbusSend8(address, 0x10, reg, count);
 }
 
@@ -571,6 +614,7 @@ void ModbusWriteMultipleResponse(unsigned char address, unsigned int reg, unsign
  */
 void ModbusException(unsigned char address, unsigned char function, unsigned char exception) {
     unsigned int temp[1];
+    Modbus.RequestDataFormat = DATAFORMAT_8N1;
     ModbusSend(address, function, exception, temp, 0);
 }
 
@@ -604,8 +648,8 @@ void ModbusDecode(unsigned char *buf, unsigned char len) {
             // CRC OK
         //    printf("\n  valid Modbus packet: Address %02x Function %02x", Modbus.Address, Modbus.Function);
             switch (Modbus.Function) {
-                case 0x04:
-                    // (Read input register)
+                case 0x03: // (Read holding register)
+                case 0x04: // (Read input register)
                     if (len == 8) {
                         // request packet
                         Modbus.Type = MODBUS_REQUEST;
@@ -685,7 +729,8 @@ void ModbusDecode(unsigned char *buf, unsigned char len) {
                     // If address and function identical with last send or received request, it is a valid response
                     if (Modbus.Address == Modbus.RequestAddress && Modbus.Function == Modbus.RequestFunction) {
                         Modbus.Requested = 1;
-                        if (Modbus.Function == 0x04) Modbus.Register = Modbus.RequestRegister;
+                        if (Modbus.Function == 0x03 || Modbus.Function == 0x04) 
+                            Modbus.Register = Modbus.RequestRegister;
                     } else {
                         Modbus.Requested = 0;
                     }
@@ -807,8 +852,11 @@ void read_settings(void) {
     eeprom_read_object(&PVMeter, sizeof PVMeter);
     eeprom_read_object(&PVMeterAddress, sizeof PVMeterAddress);
     eeprom_read_object(&EMConfig[EM_CUSTOM].Endianness, sizeof EMConfig[EM_CUSTOM].Endianness);
+    eeprom_read_object(&EMConfig[EM_CUSTOM].DataFormat, sizeof EMConfig[EM_CUSTOM].DataFormat);
     eeprom_read_object(&EMConfig[EM_CUSTOM].IRegister, sizeof EMConfig[EM_CUSTOM].IRegister);
     eeprom_read_object(&EMConfig[EM_CUSTOM].IDivisor, sizeof EMConfig[EM_CUSTOM].IDivisor);
+    eeprom_read_object(&EMConfig[EM_CUSTOM].ERegister, sizeof EMConfig[EM_CUSTOM].ERegister);
+    eeprom_read_object(&EMConfig[EM_CUSTOM].EDivisor, sizeof EMConfig[EM_CUSTOM].EDivisor);
     eeprom_read_object(&ImportCurrent, sizeof ImportCurrent);
     eeprom_read_object(&Grid, sizeof Grid);
     eeprom_read_object(&EVMeter, sizeof EVMeter);
@@ -851,8 +899,11 @@ void write_settings(void) {
     eeprom_write_object(&PVMeter, sizeof PVMeter);
     eeprom_write_object(&PVMeterAddress, sizeof PVMeterAddress);
     eeprom_write_object(&EMConfig[EM_CUSTOM].Endianness, sizeof EMConfig[EM_CUSTOM].Endianness);
+    eeprom_write_object(&EMConfig[EM_CUSTOM].DataFormat, sizeof EMConfig[EM_CUSTOM].DataFormat);
     eeprom_write_object(&EMConfig[EM_CUSTOM].IRegister, sizeof EMConfig[EM_CUSTOM].IRegister);
     eeprom_write_object(&EMConfig[EM_CUSTOM].IDivisor, sizeof EMConfig[EM_CUSTOM].IDivisor);
+    eeprom_write_object(&EMConfig[EM_CUSTOM].ERegister, sizeof EMConfig[EM_CUSTOM].ERegister);
+    eeprom_write_object(&EMConfig[EM_CUSTOM].EDivisor, sizeof EMConfig[EM_CUSTOM].EDivisor);
     eeprom_write_object(&ImportCurrent, sizeof ImportCurrent);
     eeprom_write_object(&Grid, sizeof Grid);
     eeprom_write_object(&EVMeter, sizeof EVMeter);
@@ -1184,25 +1235,25 @@ void combineBytes(void *var, unsigned char *buf, unsigned char pos, unsigned cha
     
     // XC8 is little endian
     switch(endianness) {
-        case 0: // low byte first, low word first (little endian)
+        case ENDIANESS_LBF_LWF: // low byte first, low word first (little endian)
             *pBytes++ = (unsigned char)buf[pos + 0];
             *pBytes++ = (unsigned char)buf[pos + 1];
             *pBytes++ = (unsigned char)buf[pos + 2];
             *pBytes   = (unsigned char)buf[pos + 3];   
             break;
-        case 1: // low byte first, high word first
+        case ENDIANESS_LBF_HWF: // low byte first, high word first
             *pBytes++ = (unsigned char)buf[pos + 2];
             *pBytes++ = (unsigned char)buf[pos + 3];
             *pBytes++ = (unsigned char)buf[pos + 0];
             *pBytes   = (unsigned char)buf[pos + 1];   
             break;
-        case 2: // high byte first, low word first
+        case ENDIANESS_HBF_LWF: // high byte first, low word first
             *pBytes++ = (unsigned char)buf[pos + 1];
             *pBytes++ = (unsigned char)buf[pos + 0];
             *pBytes++ = (unsigned char)buf[pos + 3];
             *pBytes   = (unsigned char)buf[pos + 2];   
             break;
-        case 3: // high byte first, high word first (big endian)
+        case ENDIANESS_HBF_HWF: // high byte first, high word first (big endian)
             *pBytes++ = (unsigned char)buf[pos + 3];
             *pBytes++ = (unsigned char)buf[pos + 2];
             *pBytes++ = (unsigned char)buf[pos + 1];
@@ -1234,7 +1285,7 @@ signed double receiveMeasurement(unsigned char *buf, unsigned char pos, unsigned
  * @param unsigned char Address
  */
 void requestEnergyMeasurement(unsigned char Meter, unsigned char Address) {
-    ModbusReadInputRequest(Address, EMConfig[Meter].ERegister, 2);
+    ModbusReadInputRequest(EMConfig[Meter].DataFormat, Address, EMConfig[Meter].Function, EMConfig[Meter].ERegister, 2);
 }
 
 /**
@@ -1265,7 +1316,7 @@ signed double receiveEnergyMeasurement(unsigned char *buf, unsigned char Meter) 
  * @param unsigned char Address
  */
 void requestPowerMeasurement(unsigned char Meter, unsigned char Address) {
-    ModbusReadInputRequest(Address, EMConfig[Meter].PRegister, 2);
+    ModbusReadInputRequest(EMConfig[Meter].DataFormat, Address, EMConfig[Meter].Function, EMConfig[Meter].PRegister, 2);
 }
 
 /**
@@ -1292,15 +1343,15 @@ unsigned int receivePowerMeasurement(unsigned char *buf, unsigned char Meter) {
 void requestCurrentMeasurement(unsigned char Meter, unsigned char Address) {
     switch(Meter) {
         case EM_SENSORBOX:
-            ModbusReadInputRequest(Address, 0, 20);
+            ModbusReadInputRequest(EMConfig[Meter].DataFormat, Address, EMConfig[Meter].Function, EMConfig[Meter].IRegister, 20);
             break;
         case EM_EASTRON:
             // Phase 1-3 current: Register 0x06 - 0x0B (unsigned)
             // Phase 1-3 power:   Register 0x0C - 0x11 (signed)
-            ModbusReadInputRequest(Address, 0x06, 12);
+            ModbusReadInputRequest(EMConfig[Meter].DataFormat, Address, EMConfig[Meter].Function, EMConfig[Meter].IRegister, 12);
             break;
         default:
-            ModbusReadInputRequest(Address, EMConfig[Meter].IRegister, 6);
+            ModbusReadInputRequest(EMConfig[Meter].DataFormat, Address, EMConfig[Meter].Function, EMConfig[Meter].IRegister, 6);
             break;
     }  
 }
@@ -1323,7 +1374,7 @@ unsigned char receiveCurrentMeasurement(unsigned char *buf, unsigned char Meter,
     switch(Meter) {
         case EM_SENSORBOX:
             // return immediately if the data contains no new P1 or CT measurement
-            if (buf[3] == 0) return 0;  // error!!
+            if (buf[3] == 0) return 0; // error!!
             // determine if there is P1 data present, otherwise use CT data
             if (buf[3] & 0x80) offset = 16;                                     // P1 data present
             else offset = 28;                                                   // Use CTs
@@ -1417,17 +1468,22 @@ unsigned char getMenuItems (void) {
                 MenuItems[m++] = MENU_PVMETER;                                  // - - - Type of PV electric meter (0: Disabled / Constants EM_*)
                 if (PVMeter) MenuItems[m++] = MENU_PVMETERADDRESS;              // - - - - Address of PV electric meter (5 - 254)
             }
-            if (MainsMeter == EM_CUSTOM || PVMeter == EM_CUSTOM) {              // ? Custom electric meter used?
-                MenuItems[m++] = MENU_EMCUSTOM_ENDIANESS;                       // - Byte order of custom electric meter
-                MenuItems[m++] = MENU_EMCUSTOM_IREGISTER;                       // - Starting register for current of custom electric meter
-                MenuItems[m++] = MENU_EMCUSTOM_IDIVISOR;                        // - Divisor for current of custom electric meter
-            }
         }
     }
     MenuItems[m++] = MENU_EVMETER;                                              // Type of EV electric meter (0: Disabled / Constants EM_*)
     if (EVMeter) {                                                              // ? EV meter configured?
         MenuItems[m++] = MENU_EVMETERADDRESS;                                   // - Address of EV electric meter (5 - 254)
     }
+
+    if ((Mode && LoadBl < 2 && (MainsMeter == EM_CUSTOM || PVMeter == EM_CUSTOM)) || EVMeter == EM_CUSTOM) {              // ? Custom electric meter used?
+        MenuItems[m++] = MENU_EMCUSTOM_ENDIANESS;                               // - Byte order of custom electric meter
+        MenuItems[m++] = MENU_EMCUSTOM_DATAFORMAT;                              // - Data format of custom electric meter
+        MenuItems[m++] = MENU_EMCUSTOM_IREGISTER;                               // - Starting register for current of custom electric meter
+        MenuItems[m++] = MENU_EMCUSTOM_IDIVISOR;                                // - Divisor for current of custom electric meter
+        MenuItems[m++] = MENU_EMCUSTOM_EREGISTER;                               // - Starting register for energy of custom electric meter
+        MenuItems[m++] = MENU_EMCUSTOM_EDIVISOR;                                // - Divisor for current of energy electric meter
+    }
+
     MenuItems[m++] = MENU_EXIT;
 
     return m;
@@ -1517,11 +1573,20 @@ unsigned char setItemValue(unsigned char nav, unsigned int val) {
                 case MENU_EMCUSTOM_ENDIANESS:
                     EMConfig[EM_CUSTOM].Endianness = val;
                     break;
+                case MENU_EMCUSTOM_DATAFORMAT:
+                    EMConfig[EM_CUSTOM].DataFormat = val;
+                    break;
                 case MENU_EMCUSTOM_IREGISTER:
                     EMConfig[EM_CUSTOM].IRegister = val;
                     break;
                 case MENU_EMCUSTOM_IDIVISOR:
                     EMConfig[EM_CUSTOM].IDivisor = val;
+                    break;
+                case MENU_EMCUSTOM_EREGISTER:
+                    EMConfig[EM_CUSTOM].ERegister = val;
+                    break;
+                case MENU_EMCUSTOM_EDIVISOR:
+                    EMConfig[EM_CUSTOM].EDivisor = val;
                     break;
                 default:
                     break;
@@ -1603,10 +1668,16 @@ unsigned int getItemValue(unsigned char nav) {
             return EVMeterAddress;
         case MENU_EMCUSTOM_ENDIANESS:
             return EMConfig[EM_CUSTOM].Endianness;
+        case MENU_EMCUSTOM_DATAFORMAT:
+            return EMConfig[EM_CUSTOM].DataFormat;
         case MENU_EMCUSTOM_IREGISTER:
             return EMConfig[EM_CUSTOM].IRegister;
         case MENU_EMCUSTOM_IDIVISOR:
             return EMConfig[EM_CUSTOM].IDivisor;
+        case MENU_EMCUSTOM_EREGISTER:
+            return EMConfig[EM_CUSTOM].ERegister;
+        case MENU_EMCUSTOM_EDIVISOR:
+            return EMConfig[EM_CUSTOM].EDivisor;
 
         case STATUS_STATE:
             return State + (65 - STATE_A);
@@ -1682,7 +1753,8 @@ const far char * getMenuItemOption(unsigned char nav) {
         case MENU_PVMETERADDRESS:
         case MENU_EVMETERADDRESS:
         case MENU_EMCUSTOM_IREGISTER:
-            sprintf(Str, "%u (%02X)", value, value);
+        case MENU_EMCUSTOM_EREGISTER:
+            sprintf(Str, "%u (%X)", value, value);
             return Str;
         case MENU_MAINSMETERMEASURE:
             if (MainsMeterMeasure) return StrMainsHomeEVSE;
@@ -1696,7 +1768,17 @@ const far char * getMenuItemOption(unsigned char nav) {
                 default:
                     break;
             }
+        case MENU_EMCUSTOM_DATAFORMAT:
+            switch(value) {
+                case 0: return "8N1";
+                case 1: return "8N2";
+                case 2: return "8E1";
+                case 3: return "8O1";
+                default:
+                    break;
+            }
         case MENU_EMCUSTOM_IDIVISOR:
+        case MENU_EMCUSTOM_EDIVISOR:
             if (value == 8) return "Double";
             sprintf(Str, "%.0f", pow10(value));
             return Str;
@@ -1803,7 +1885,7 @@ void ReadItemValueResponse(unsigned char ItemID) {
         for (i = 0; i < Modbus.RegisterCount; i++) {
             values[i] = getItemValue(ItemID + i);
         }
-        ModbusReadInputResponse(Modbus.Address, values, Modbus.RegisterCount);
+        ModbusReadInputResponse(Modbus.Address, Modbus.Function, values, Modbus.RegisterCount);
     } else {
         ModbusException(Modbus.Address, Modbus.Function, MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS);
     }
@@ -1889,17 +1971,25 @@ void RS232cli(void) {
     unsigned char MenuItemsCount = getMenuItems();
 
     printf("\r\n");
-    if (menu == 0)                                                              // menu = Main Menu
+    if (U2buffer[0]=='$') {
+        ISR2FLAG = 0;                                                               // clear flag
+        idx2 = 0;                                                                   // reset buffer pointer
+        return;
+    } 
+    else if (menu == 0)                                                              // menu = Main Menu
     {
         for(i = 0; i < MenuItemsCount - 1; i++) {
             if (strcmp(U2buffer, MenuStr[MenuItems[i]].Key) == 0) menu = MenuItems[i];
         }
-    } else if (U2buffer[0] == 0) menu = 0;
+    } 
+    else if (U2buffer[0] == 0) {
+        menu = 0;
+    }
     else {
         switch (menu) {
             case MENU_CAL:
                 Inew = atof(U2buffer);
-                if ((Inew < 6) || (Inew > 80)) printf("\r\nError! please calibrate with atleast 6A\r\n");
+                if ((Inew < 6) || (Inew > 80)) printf("\r\nError! please calibrate with at least 6A\r\n");
                 else {
                     Iold = abs(Irms[0]) / ICal;
                     ICal = (Inew * 10) / Iold;                                  // Calculate new Calibration value
@@ -1975,6 +2065,7 @@ void RS232cli(void) {
                 break;
             case MENU_MAINSMETER:
             case MENU_PVMETER:
+            case MENU_EVMETER:
                 for(i = 0; i < EM_CUSTOM; i++){
                     if (strcmp(U2buffer, EMConfig[i].Desc) == 0) {
                         setItemValue(menu, i);
@@ -2086,6 +2177,7 @@ void RS232cli(void) {
             break;
         case MENU_MAINSMETER:
         case MENU_PVMETER:
+        case MENU_EVMETER:
             printf("Enter new type (%s", EMConfig[0].Desc);
             for(i = 1; i <= EM_CUSTOM; i++) {
                 printf("/%s", EMConfig[i].Desc);
@@ -2097,6 +2189,9 @@ void RS232cli(void) {
             break;
         case MENU_EMCUSTOM_ENDIANESS:
             printf("Enter new Byte order (0: LBF & LWF, 1: LBF & HWF, 2: HBF & LWF, 3: HBF & HWF): ");
+            break;
+        case MENU_EMCUSTOM_DATAFORMAT:
+            printf("Enter new Data format (0: 8N1, 1: 8N2, 2: 8E1, 3: 8O1): ");
             break;
         case MENU_EMCUSTOM_IDIVISOR:
             printf("Enter new exponent of divisor (0-7) or 8 for double: ");
@@ -2339,8 +2434,17 @@ void main(void) {
 
         if (ISR2FLAG) RS232cli();                                               // RS232 command line interface
 
-        if (DelayedRS485SendBuf && (ModbusTimer > 6)) {
-            
+        if (DelayedRS485SendBuf && (ModbusTimer > MODBUS_REQUEST_INTERVAL)) {
+
+            if (Modbus.RequestDataFormat==DATAFORMAT_8N1) {
+                TXSTA1 = 0b00100100;                                            // Enable TX, 8 bit, Asynchronous mode
+                RCSTA1 = 0b10010000;                                            // Enable serial port TX and RX, 8 bit. 
+            }
+            else {
+                TXSTA1 = 0b01100100;                                            // Enable TX, 9 bit, Asynchronous mode
+                RCSTA1 = 0b11010000;                                            // Enable serial port TX and RX, 9 bit. 
+            }
+
             LATBbits.LATB5 = 1;                                                 // set RS485 transceiver to transmit
             delay(1);
             PIE1bits.TX1IE = 1;                                                 // enable transmit Interrupt for RS485
@@ -2634,7 +2738,7 @@ void main(void) {
             if (TMR2 > 230)                                                     // PWM > 92%
             {
                 while (TMR2 < 242);                                             // wait till TMR2 is in range, otherwise we'll miss it (blocking)
-                if ((TMR2 > 241) && (TMR2 < 249));                              // PWM cycle >= 96% (should be low)
+                if ((TMR2 > 241) && (TMR2 < 249))                               // PWM cycle >= 96% (should be low)
                 {
                     pilot = ReadPilot();
                     if (pilot == PILOT_DIODE) DiodeCheck = 1;                   // Diode found, OK
@@ -2848,6 +2952,9 @@ void main(void) {
                     requestCurrentMeasurement(PVMeter, PVMeterAddress);
                     break;
                 case 3:
+                    requestCurrentMeasurement(EVMeter, EVMeterAddress);
+                    break;
+                case 4:
                     requestEnergyMeasurement(EVMeter, EVMeterAddress);
                     break;
             }
@@ -2898,20 +3005,24 @@ void main(void) {
 #endif            
             ModbusDecode(U1packet, ISRFLAG);
             if (Modbus.Type == MODBUS_RESPONSE) {
-                //printf("\nModbus Response Address %i / Function %02x / Register %02x",Modbus.Address,Modbus.Function,Modbus.Register);
+              //printf("\nModbus Response Address %i / Function %02x / Register %02x",Modbus.Address,Modbus.Function,Modbus.Register);
                 switch (Modbus.Function) {
+                    case 0x03: // (Read holding register)
                     case 0x04: // (Read input register)
                         if (MainsMeter && Modbus.Address == MainsMeterAddress && Modbus.Register == EMConfig[MainsMeter].IRegister) {
                             // packet from Mains electric meter
                             x = receiveCurrentMeasurement(Modbus.Data, MainsMeter, Irms);
-                            if (x) timeout = 10;    // only reset timeout when data is ok
-                            if (PVMeter) {
+                            if (!x) {
+                                ModbusRequest = 1;                              // Retry on error
+                            } else if (PVMeter) {
                                 MainsReceived = 1;
-                                ModbusRequest = 2;
+                                ModbusRequest = 2; 
                             } else {
                                 UpdateCurrentData();
                                 if (EVMeter) {
                                     ModbusRequest = 3;
+                                } else {
+                                    timeout = 10;                               // only reset timeout when data is ok and all done
                                 }
                             }
                         } else if (MainsReceived && PVMeter && Modbus.Address == PVMeterAddress && Modbus.Register == EMConfig[PVMeter].IRegister) {
@@ -2920,18 +3031,26 @@ void main(void) {
                             for (x = 0; x < 3; x++) {
                                 Irms[x] = Irms[x] - PV[x];
                             }
-                            timeout = 10;
                             MainsReceived = 0;
                             UpdateCurrentData();
                             if (EVMeter) {
                                 ModbusRequest = 3;
+                            } else {
+                                timeout = 10;                                   // only reset timeout when all done
                             }
+                        } else if (EVMeter && Modbus.Address == EVMeterAddress && Modbus.Register == EMConfig[EVMeter].IRegister) {
+                            // packet from EV electric meter
+                            receiveCurrentMeasurement(Modbus.Data, EVMeter, EVIrms);
+
+                            ModbusRequest = 4;
                         } else if (EVMeter && Modbus.Address == EVMeterAddress && Modbus.Register == EMConfig[EVMeter].ERegister) {
-                            // packet from PV electric meter
+                            // packet from EV electric meter
                             EnergyEV = receiveEnergyMeasurement(Modbus.Data, EVMeter);
-                            timeout = 10;
-                            if (ResetKwh == 2) EnergyMeterStart = EnergyEV;      // At powerup, set EnergyEV to kwh meter value
+
+                            if (ResetKwh == 2) EnergyMeterStart = EnergyEV;     // At powerup, set EnergyEV to kwh meter value
                             if (EVMeter) EnergyCharged = EnergyEV - EnergyMeterStart; // Calculate Energy
+
+                            timeout = 10;                                       // only reset timeout when all done
                         }
                         break;
                     default:
@@ -2941,6 +3060,7 @@ void main(void) {
                 //printf("\nModbus Request Address %i / Function %02x / Register %02x",Modbus.Address,Modbus.Function,Modbus.Register);
                                                                                 // No timeout reset here, as it is a request, no response!!!! 
                 switch (Modbus.Function) {
+                    case 0x03: // (Read holding register)
                     case 0x04: // (Read input register)
                         // Addressed to this device
                         if (Modbus.Address == LoadBl) {
