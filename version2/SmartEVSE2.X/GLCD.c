@@ -567,7 +567,7 @@ void GLCD(void) {
         if (abs(Isum) >3 ) GLCD_write_buf(0xFE);                                // Show energy flow 'blob' between Grid and House
                                                                                 // If current flow is < 0.3A don't show the blob
         if (EVMeter) {                                                          // If we have a EV kWh meter configured, Show total charged energy in kWh on LCD.
-            sprintfd(Str, "%2u.%1u", EnergyCharged*10, 1);  
+            sprintfd(Str, "%2u.%1u", EnergyCharged, 1);  
             GLCD_print_buf(100, 0, Str);                                        // print to buffer
             GLCD_print_buf(106, 1, "kWh");                                      // print to buffer
         }
