@@ -33,7 +33,9 @@
 
 
 #define VERSION "2.17"                                                          // SmartEVSE software version
-//#define DEBUG_P                                                                 // Debug print enable/disable
+#define RAPI_VERSION "4.0.1"                                                    // Supported OpenEVSE RAPI version
+#define RAPI_TIMEOUT 10                                                         // RAPI timeout (in s) only provide async updates if last command within this time
+//#define DEBUG_P                                                               // Debug print enable/disable
 #define TRANSFORMER_COMP 1.00                                                   // Current calculation compensation option for use with 230V-400V transformers,
                                                                                 // where the primary (MAINS) current is 1.73 times the secondary (EVSE) current.
                                                                                 // set to 1.00 for normal use, and to 1.73 for use with a transformer.
@@ -180,10 +182,18 @@
 #define MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE 0x03
 
 #ifdef DEBUG_P
-#define DEBUG_PRINT(x) printf x
+#define DEBUG_PRINT(x) printf(x)
 #else
 #define DEBUG_PRINT(x)
 #endif 
+
+#ifdef DEBUG_P
+#define INFO_PRINT(x) printf(x)
+#else
+#define INFO_PRINT(x) {if (RAPITimer==0) printf(x);}
+#endif 
+
+#define STATE_PRINT(x) {if (RAPITimer==0) printf(x); else SendRapiReply("ST %02x", State);}
 
 #define _RSTB_0 LATCbits.LATC4 = 0;
 #define _RSTB_1 LATCbits.LATC4 = 1;
