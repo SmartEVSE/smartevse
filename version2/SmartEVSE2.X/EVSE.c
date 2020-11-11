@@ -180,6 +180,7 @@ signed double Irms[3]={0, 0, 0};                                                
 unsigned char State = STATE_A;
 unsigned char Error = NO_ERROR;
 unsigned char NextState;
+unsigned char pilot = PILOT_NOK;                                                // Last pilot reading
 
 unsigned int MaxCapacity;                                                       // Cable limit (A) (limited by the wire in the charge cable, set automatically, or manually if Config=Fixed Cable)
 unsigned int ChargeCurrent;                                                     // Calculated Charge Current (Amps *10)
@@ -2010,7 +2011,9 @@ void HandleRapi(void) {
             case 'P': SendRapiReply("OK %d %d %d", TempEVSE*10, -2560, -2560); break; // Version
             case 'S':                                                           // Status
                 SendRapiReply("OK %d %d", 
-                    Error==NO_ERROR? State : (Error==TEMP_HIGH?10:(Error==RCD_TRIPPED?6:(Error==CT_NOCOMM?9:0xFF))),
+                    Error==NO_ERROR? 
+                        (State!=STATE_A?State:((pilot==PILOT_6V || pilot==PILOT_9V)?0xFE:STATE_A)) : // 0xFE = sleeping
+                        (Error==TEMP_HIGH?10:(Error==RCD_TRIPPED?6:(Error==CT_NOCOMM?9:0xFF))), // 0xFF = disabled
                     ChargeTimer); 
                 break;
             case 'T': SendRapiReply("NK");                                      // date/time not supported
@@ -2023,9 +2026,23 @@ void HandleRapi(void) {
             case 'R': SendRapiReply("OK"); Reset(); break;
             case '0': case '1': case 'B': case 'P': SendRapiReply("OK"); break; // ignore screen commands
             case 'F': SendRapiReply("NK"); break;                               // ignore enable/disable feature
-            case 'D': SendRapiReply("OK"); break;                               // ignore disable
-            case 'E': SendRapiReply("OK"); break;                               // ignore enable
-            case 'S': SendRapiReply("OK"); break;                               // ignore enter sleep mode
+            case 'D': {                                                         // Disable
+                SendRapiReply("OK");   
+                Access_bit = 0;                                                 // Toggle Access bit on/off
+                State = STATE_A;                                                // Switch back to state A
+                break;                                                          
+            }
+            case 'E': {                                                         // Enable charging
+                SendRapiReply("OK");   
+                Access_bit = 1;                                                 // Toggle Access bit on/off
+                break;                                                          
+            }
+            case 'S': {                                                         // Enable charging
+                SendRapiReply("OK");   
+                State = STATE_A;                                                // Switch back to state A
+                ChargeDelay = CHARGEDELAY;                                      // Keep in State A for CHARGEDELAY seconds
+                break;                                                          
+            }
             default:  SendRapiReply("NK"); break;                               // unknown function
         }
     } else if (U2buffer[1]=='S') {
@@ -2522,7 +2539,7 @@ void UpdateCurrentData(void) {
 
 void main(void) {
     unsigned char x, leftbutton, RB2low = 0;
-    unsigned char pilot, count = 0, timeout = 5, DataReceived = 0, MainsReceived = 0;
+    unsigned char count = 0, timeout = 5, DataReceived = 0, MainsReceived = 0;
     unsigned char DiodeCheck = 0, ItemID, ActivationMode = 0, ActivationTimer = 0;
     unsigned char SlaveAdr, Broadcast = 0, RB2count = 0, RB2last = 1, Sens2s = 1;
     unsigned int BalancedReceived;
@@ -3341,8 +3358,7 @@ void main(void) {
                                 Balanced[SlaveAdr] = 0;                         // Make sure the Slave does not start charging by setting current to 0
                                 //Error |= NOCURRENT;
                             }
-                            if (RAPITimer==0)
-                                INFO_PRINT("02 Slave %u requested:%.1f A\r\n", SlaveAdr, (double)Modbus.Value/10);
+                            INFO_PRINT("02 Slave %u requested:%.1f A\r\n", SlaveAdr, (double)Modbus.Value/10);
                             // Send ACK to Slave, followed by assigned current
                             ModbusWriteSingleRequest(Modbus.Address, 0x82, Balanced[SlaveAdr]);
                             break;
@@ -3354,16 +3370,14 @@ void main(void) {
                                 Balanced[SlaveAdr] = 0;                         // For correct baseload calculation set current to zero
                                 CalcBalancedCurrent(1);                         // Calculate charge current for all connected EVSE's
                             } else Balanced[SlaveAdr] = 0;                      // Make sure the Slave does not start charging by setting current to 0
-                            if (RAPITimer==0)
-                                INFO_PRINT("03 Slave %u charging: %.1f A\r\n", SlaveAdr, (double)Balanced[SlaveAdr]/10);
+                            INFO_PRINT("03 Slave %u charging: %.1f A\r\n", SlaveAdr, (double)Balanced[SlaveAdr]/10);
                             // Send ACK to Slave, followed by assigned current
                             ModbusWriteSingleRequest(Modbus.Address, 0x83, Balanced[SlaveAdr]);
                             break;
                         case 0x04:                                              // charging stopped (state C->B), followed by two empty bytes
                             BalancedState[SlaveAdr] = 1;                        // Mark Slave EVSE as inactive (still State B)
                             CalcBalancedCurrent(0);                             // Calculate dynamic charge current for connected EVSE's
-                            if (RAPITimer==0)
-                                INFO_PRINT("04 C->B Slave %u inactive\r\n", SlaveAdr);
+                            INFO_PRINT("04 C->B Slave %u inactive\r\n", SlaveAdr);
                             // Send ACK to Slave
                             ModbusWriteSingleRequest(Modbus.Address, 0x84, 0x00);
                             break;

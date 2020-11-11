@@ -513,6 +513,9 @@ void GLCD(void) {
             GLCD_print_buf2(2, (const far char *) "CHARGING");
             sprintfd(Str, "%u.%uA", Balanced[0] / 10.0, 1);
             GLCD_print_buf2(4, Str);
+        } else if (State == STATE_A && pilot!=PILOT_6V && pilot!=PILOT_9V) {    // STATE A message
+            GLCD_print_buf2(2, (const far char *) "CAR NOT");
+            GLCD_print_buf2(4, (const far char *) "CONNECTED");
         } else {                                                                // STATE A and STATE B
             if (Access_bit) {
                 GLCD_print_buf2(2, (const far char *) "READY TO");
@@ -626,9 +629,9 @@ void GLCD(void) {
         } else if (ChargeDelay && (State == STATE_A|| State == STATE_B)) {      // STATE A + B message, when waiting for charge delay
             sprintf(Str, "READY %u", ChargeDelay);
             GLCD_print_buf2(5, Str);
-        } else if (State == STATE_A) {                                          // STATE A message
+        } else if (State == STATE_A && pilot!=PILOT_6V && pilot!=PILOT_9V) {  // STATE A message
             GLCD_print_buf2(5, (const far char *) "READY");
-        } else if (State == STATE_B) {                                          // STATE B message
+        } else if (State == STATE_B || (State == STATE_A && (pilot==PILOT_6V && pilot==PILOT_9V))) { // STATE B message
             GLCD_print_buf2(5, (const far char *) "CONNECTED");
         } else if (State == STATE_C) {
             BACKLIGHT_ON;                                                       // LCD backlight on
