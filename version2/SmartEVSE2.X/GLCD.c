@@ -631,7 +631,7 @@ void GLCD(void) {
             GLCD_print_buf2(5, Str);
         } else if (State == STATE_A && pilot!=PILOT_6V && pilot!=PILOT_9V) {  // STATE A message
             GLCD_print_buf2(5, (const far char *) "READY");
-        } else if (State == STATE_B || (State == STATE_A && (pilot==PILOT_6V && pilot==PILOT_9V))) { // STATE B message
+        } else if (State == STATE_B || (State == STATE_A && (pilot==PILOT_6V || pilot==PILOT_9V))) { // STATE B message
             GLCD_print_buf2(5, (const far char *) "CONNECTED");
         } else if (State == STATE_C) {
             BACKLIGHT_ON;                                                       // LCD backlight on

@@ -193,7 +193,22 @@
 #define INFO_PRINT(x) {if (RAPITimer==0) printf(x);}
 #endif 
 
-#define STATE_PRINT(x) {if (RAPITimer==0) printf(x); else SendRapiReply("ST %02x", State);}
+void SendRapiReply(const char* fmt, ...);
+unsigned char GetRapiState(void);
+extern unsigned char prevRapiState;
+
+#define STATE_PRINT(x) \
+    { \
+        if (RAPITimer==0) \
+            printf(x); \
+        else { \
+            unsigned char rapiState = GetRapiState(); \
+            if (prevRapiState != rapiState) { \
+                SendRapiReply("ST %02x", rapiState); \
+                prevRapiState=rapiState; \
+            } \
+        } \
+    }
 
 #define _RSTB_0 LATCbits.LATC4 = 0;
 #define _RSTB_1 LATCbits.LATC4 = 1;

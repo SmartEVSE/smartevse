@@ -174,6 +174,8 @@ char Grid = GRID;                                                               
 unsigned char EVMeter;                                                          // Type of EVSE electric meter (0: Disabled / Constants EM_*)
 unsigned char EVMeterAddress;
 
+unsigned char prevRapiState=0;
+
 signed double Irms[3]={0, 0, 0};                                                // Momentary current per Phase (Amps *10) (23 = 2.3A)
                                                                                 // Max 3 phases supported
 
@@ -827,6 +829,8 @@ void validate_settings(void) {
     if (Mode == MODE_NORMAL) { MainsMeter = 0; PVMeter = 0; }
     // Disable PV reception if not configured
     if (MainsMeterMeasure == 0) PVMeter = 0;
+    
+    STATE_PRINT("STATE validatesettings\r\n");
 }
 
 void read_settings(void) {
@@ -1610,6 +1614,7 @@ unsigned char setItemValue(unsigned char nav, unsigned int val) {
                     Access_bit = val;
                     ret = 1;
                     if (val == 0) State = STATE_A;
+                    STATE_PRINT("STATE setItemValue\r\n");
                 }
                 break;
             default:
@@ -1968,6 +1973,21 @@ void SendRapiReply(const char* fmt, ...) {
     printf("$%s^%02X\r", buf, checkxor);
 }
 
+unsigned char GetRapiState(void) {
+    if (Error!=NO_ERROR) {
+        if (Error & TEMP_HIGH) return 10;
+        if (Error & RCD_TRIPPED) return 6;
+        if (Error & CT_NOCOMM) return 9;
+        return 0xFF;
+    } else if (State==STATE_A) {
+        if (pilot==PILOT_6V || pilot==PILOT_9V)
+            return 0xFE;
+        else return STATE_A;
+    } else {
+        return State;
+    }
+}
+
 void HandleRapi(void) {
     unsigned char checkxor=0;
     int x;
@@ -2006,17 +2026,13 @@ void HandleRapi(void) {
             case 'D': SendRapiReply("NK"); break;                               // Delay timer not supported
             case 'E': SendRapiReply("OK %d %04x", MaxCurrent, 0x33D); break;    // ECF_DIODE_CHK_DISABLED|ECF_VENT_REQ_DISABLED|ECF_GND_CHK_DISABLED|ECF_STUCK_RELAY_CHK_DISABLED|ECF_AUTO_SVC_LEVEL_DISABLED|ECF_MONO_LCD|ECF_GFI_TEST_DISABLED|ECF_L2
             case 'F': SendRapiReply("OK 0 0 0"); break;                         // Fault counters not supported (gfitripcnt nogndtripcnt stuckrelaytripcnt)
-            case 'G': SendRapiReply("OK %d %d", (EVMeter?(EVIrms[0]+EVIrms[1]+EVIrms[2])/3:Balanced[0])*100L, 230*1000L); break; // TODO: report real voltage
+            case 'G': SendRapiReply("OK %d %d000", (int)(EVMeter?(EVIrms[0]+EVIrms[1]+EVIrms[2]):(Balanced[0])*100), (long)230); break; // TODO: report real voltage
             case 'H': SendRapiReply("OK %d", 0); break;                         // Charge limit in kWh
             case 'P': SendRapiReply("OK %d %d %d", TempEVSE*10, -2560, -2560); break; // Version
             case 'S':                                                           // Status
-                SendRapiReply("OK %d %d", 
-                    Error==NO_ERROR? 
-                        (State!=STATE_A?State:((pilot==PILOT_6V || pilot==PILOT_9V)?0xFE:STATE_A)) : // 0xFE = sleeping
-                        (Error==TEMP_HIGH?10:(Error==RCD_TRIPPED?6:(Error==CT_NOCOMM?9:0xFF))), // 0xFF = disabled
-                    ChargeTimer); 
+                SendRapiReply("OK %d %d", GetRapiState(), ChargeTimer); 
                 break;
-            case 'T': SendRapiReply("NK");                                      // date/time not supported
+            case 'T': SendRapiReply("NK"); break;                               // date/time not supported
             case 'U': SendRapiReply("OK %d %d", (int)(EnergyCharged*3600*1000), (int)(EnergyEV*1000)); break;
             case 'V': SendRapiReply("OK SmartEVSE_%s %s", VERSION, RAPI_VERSION); break;
             default:  SendRapiReply("NK"); break;                               // unknown get command
@@ -2030,17 +2046,20 @@ void HandleRapi(void) {
                 SendRapiReply("OK");   
                 Access_bit = 0;                                                 // Toggle Access bit on/off
                 State = STATE_A;                                                // Switch back to state A
+                STATE_PRINT("STATE HandleRapi\r\n");
                 break;                                                          
             }
             case 'E': {                                                         // Enable charging
                 SendRapiReply("OK");   
                 Access_bit = 1;                                                 // Toggle Access bit on/off
+                STATE_PRINT("STATE HandleRapi\r\n");
                 break;                                                          
             }
             case 'S': {                                                         // Enable charging
                 SendRapiReply("OK");   
                 State = STATE_A;                                                // Switch back to state A
                 ChargeDelay = CHARGEDELAY;                                      // Keep in State A for CHARGEDELAY seconds
+                STATE_PRINT("STATE HandleRapi\r\n");
                 break;                                                          
             }
             default:  SendRapiReply("NK"); break;                               // unknown function
@@ -2614,6 +2633,7 @@ void main(void) {
                                                                                 // Broadcast change of Charging mode (Solar/Smart) to slave EVSE's
                 if (LoadBl == 1) ModbusWriteSingleRequest(0x00, 0xA8, Mode);
                 leftbutton = 5;
+                STATE_PRINT("STATE left button\r\n");
         } else if (leftbutton && ButtonState == 0x7) leftbutton--;
         
                
@@ -2632,9 +2652,11 @@ void main(void) {
                                 State = STATE_A;                                // Switch back to state A
                             } else Access_bit = 1;
                             INFO_PRINT("access: %d ", Access_bit);
+                            STATE_PRINT("STATE switch\r\n");
                             break;
                         case 2: // Access Switch
                             Access_bit = 1;
+                            STATE_PRINT("STATE switch\r\n");
                             break;
                         case 3: // Smart-Solar Button or hold button for 1,5 second to STOP charging
                             if (RB2low == 0) {
@@ -2645,7 +2667,8 @@ void main(void) {
                                 if (State == STATE_C) {                         
                                     State = STATE_A;
                                     if (!TestState) ChargeDelay = 15;           // Keep in State A for 15 seconds, so the Charge cable can be removed.
-                                RB2low = 2;    
+                                    RB2low = 2;    
+                                    STATE_PRINT("STATE switch\r\n");
                                 }
                             }
                             break;
@@ -2661,6 +2684,7 @@ void main(void) {
                             if (State == STATE_C) {                             // Menu option Access is set to Disabled
                                 State = STATE_A;
                                 if (!TestState) ChargeDelay = 15;               // Keep in State A for 15 seconds, so the Charge cable can be removed.
+                                STATE_PRINT("STATE switch\r\n");
                             }
                             break;
                     }
@@ -2681,6 +2705,7 @@ void main(void) {
                         case 2: // Access Switch
                             Access_bit = 0;
                             State = STATE_A;
+                            STATE_PRINT("STATE switch\r\n");
                             break;
                         case 3: // Smart-Solar Button
                             if (RB2low != 2) {
@@ -2694,6 +2719,7 @@ void main(void) {
                                 SolarTimerEnable = 0;                           // Also make sure the SolarTimer is disabled.
                                                                                 // Broadcast change of Charging mode (Solar/Smart) to slave EVSE's
                                 if (LoadBl == 1 && Mode) ModbusWriteSingleRequest(0x00, 0xA8, Mode);
+                                STATE_PRINT("STATE switch\r\n");
                             }
                             RB2low = 0;
                             break;    
@@ -2717,6 +2743,7 @@ void main(void) {
                 State = STATE_A;
                 Error = RCD_TRIPPED;
                 LCDTimer = 0;                                                   // display the correct error message on the LCD
+                STATE_PRINT("STATE RCD tripped\r\n");
             }
         }
 
@@ -2747,6 +2774,8 @@ void main(void) {
                 ChargeDelay = 0;                                                // Clear ChargeDelay when disconnected.
                 NextState = 0;
                 if (!ResetKwh) ResetKwh = 1;                                    // when set, reset EV kWh meter on state B->C change.
+
+                STATE_PRINT("STATE pilot change\r\n");
             } else if ( (pilot == PILOT_9V || pilot == STATE_A_TO_C) 
                 && Error == NO_ERROR && ChargeDelay == 0 && Access_bit) {       // switch to State B ?
                                                                                 // Allow to switch to state C directly if STATE_A_TO_C is set to PILOT_6V (see EVSE.h)
@@ -2782,7 +2811,10 @@ void main(void) {
                     NextState = STATE_B;
                     count = 0;
                 }
-            } else NextState = 0;
+            } else {
+                STATE_PRINT("STATE pilot change\r\n");
+                NextState = 0;
+            }
         }
 
         if (State == STATE_COMM_B)                                              // Wait for response from Master
@@ -2876,8 +2908,7 @@ void main(void) {
                 while (TMR2 < 242);                                             // wait till TMR2 is in range, otherwise we'll miss it (blocking)
                 if ((TMR2 > 241) && (TMR2 < 249))                               // PWM cycle >= 96% (should be low)
                 {
-                    pilot = ReadPilot();
-                    if (pilot == PILOT_DIODE) DiodeCheck = 1;                   // Diode found, OK
+                    if (ReadPilot() == PILOT_DIODE) DiodeCheck = 1;                   // Diode found, OK
                     else DiodeCheck = 0;
                 }
             }
@@ -2887,6 +2918,7 @@ void main(void) {
             State = STATE_B;                                                    // Switch back to State B
             PORTCbits.RC2 = 1;                                                  // Control pilot static +12V
             ActivationMode = 255;                                               // Disable ActivationMode
+            STATE_PRINT("STATE ACTSTART\r\n");
         }
 
         if ((State == STATE_COMM_C) && (Timer > ACK_TIMEOUT)) {
