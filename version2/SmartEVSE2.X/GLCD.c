@@ -587,7 +587,7 @@ void GLCD(void) {
             GLCDy = 3;
             GLCD_write_buf(0xFE);                                               // Show energy flow 'blob' between House and Car
 
-            if (EVMeter) {
+            if (EVMeter && Mode != MODE_SOLAR) {
                 for (x = 0; x < 3; x++)                                             // Display L1, L2 and L3 currents on LCD
                 {
                     sprintfd(Str, "%2uA", EVIrms[x] / 10.0, 0); // TODO

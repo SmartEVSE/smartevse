@@ -32,7 +32,7 @@
 #include "GLCD.h"
 
 
-#define VERSION "2.17"                                                          // SmartEVSE software version
+#define VERSION "2.18"                                                          // SmartEVSE software version
 #define RAPI_VERSION "4.0.1"                                                    // Supported OpenEVSE RAPI version
 #define RAPI_TIMEOUT 10                                                         // RAPI timeout (in s) only provide async updates if last command within this time
 //#define DEBUG_P                                                               // Debug print enable/disable
@@ -78,6 +78,8 @@
 #define EMCUSTOM_DATAFORMAT 0
 #define EMCUSTOM_IREGISTER 0
 #define EMCUSTOM_IDIVISOR 0
+#define EMCUSTOM_VREGISTER 0
+#define EMCUSTOM_VDIVISOR 0
 #define EMCUSTOM_EREGISTER 0
 #define EMCUSTOM_EDIVISOR 0
 
@@ -159,9 +161,11 @@
 #define MENU_EMCUSTOM_DATAFORMAT 25
 #define MENU_EMCUSTOM_IREGISTER 26
 #define MENU_EMCUSTOM_IDIVISOR 27
-#define MENU_EMCUSTOM_EREGISTER 28
-#define MENU_EMCUSTOM_EDIVISOR 29
-#define MENU_EXIT 30
+#define MENU_EMCUSTOM_VREGISTER 28
+#define MENU_EMCUSTOM_VDIVISOR 29
+#define MENU_EMCUSTOM_EREGISTER 30
+#define MENU_EMCUSTOM_EDIVISOR 31
+#define MENU_EXIT 32
 
 #define STATUS_STATE 64
 #define STATUS_ERROR 65
@@ -303,18 +307,20 @@ struct {
     unsigned char Function; // Modbus function: 3 = holding registers, 4 = input registers
     unsigned int IRegister; // Single phase current (A)
     unsigned char IDivisor; // 10^x / 8:double
+    unsigned int VRegister; // Single phase voltage (A)
+    unsigned char VDivisor; // 10^x / 8:double
     unsigned int ERegister; // Total energy (kWh)
     unsigned char EDivisor; // 10^x / 8:double
     unsigned int PRegister; // Total power (W)
     unsigned char PDivisor; // 10^x / 8:double
 } EMConfig[7] = {
-    {"Disabled",  ENDIANESS_LBF_LWF, DATAFORMAT_8N1, 0,      0, 0,      0, 0,      0, 0}, // First entry!
-    {"Sensorbox", ENDIANESS_HBF_HWF, DATAFORMAT_8N1, 4,      0, 0, 0xFFFF, 0, 0xFFFF, 0}, // Sensorbox (Own routine for request/receive)
-    {"Phoenix C", ENDIANESS_HBF_LWF, DATAFORMAT_8N1, 4,    0xC, 3,   0x3E, 1,   0x28, 1}, // PHOENIX CONTACT EEM-350-D-MCB (mA / 0,1kWh / 0,1W)
-    {"Finder",    ENDIANESS_HBF_HWF, DATAFORMAT_8N1, 4, 0x100E, 8, 0x1106, 8, 0x1026, 8}, // Finder 7E.78.8.400.0212 (A / Wh / W)
-    {"Eastron",   ENDIANESS_HBF_HWF, DATAFORMAT_8N1, 4,    0x6, 8,  0x156, 8,   0x34, 8}, // Eastron SDM630 (Own routine for request/receive) (A / kWh / W)
-    {"YTL",       ENDIANESS_HBF_HWF, DATAFORMAT_8N2, 3,   0x16, 8,  0x100, 8,   0x2e, 8}, // YTL DTS353F-2
-    {"Custom",    ENDIANESS_LBF_LWF, DATAFORMAT_8N1, 4,      0, 0,      0, 0, 0xFFFF, 0}  // Last entry!
+    {"Disabled",  ENDIANESS_LBF_LWF, DATAFORMAT_8N1, 0,      0, 0,      0, 0,      0, 0,      0, 0}, // First entry!
+    {"Sensorbox", ENDIANESS_HBF_HWF, DATAFORMAT_8N1, 4,      0, 0, 0xFFFF, 0, 0xFFFF, 0, 0xFFFF, 0}, // Sensorbox (Own routine for request/receive)
+    {"Phoenix C", ENDIANESS_HBF_LWF, DATAFORMAT_8N1, 4,    0xC, 3,    0x0, 1,   0x3E, 1,   0x28, 1}, // PHOENIX CONTACT EEM-350-D-MCB (mA / 0,1kWh / 0,1W)
+    {"Finder",    ENDIANESS_HBF_HWF, DATAFORMAT_8N1, 4, 0x100E, 8, 0x1000, 8, 0x1106, 8, 0x1026, 8}, // Finder 7E.78.8.400.0212 (A / Wh / W)
+    {"Eastron",   ENDIANESS_HBF_HWF, DATAFORMAT_8N1, 4,    0x6, 8,    0x0, 8,  0x156, 8,   0x34, 8}, // Eastron SDM630 (Own routine for request/receive) (A / kWh / W)
+    {"YTL",       ENDIANESS_HBF_HWF, DATAFORMAT_8N2, 3,   0x16, 8,    0xE, 8,  0x100, 8,   0x2e, 8}, // YTL DTS353F-2
+    {"Custom",    ENDIANESS_LBF_LWF, DATAFORMAT_8N1, 4,      0, 0,      0, 0,      0, 0, 0xFFFF, 0}  // Last entry!
 };
 
 extern unsigned char MenuItems[];
@@ -355,6 +361,8 @@ const far struct {
     {"EMDF" ,  "PROTOCOL", "Data format of custom electric meter", 0, 3, EMCUSTOM_DATAFORMAT},
     {"EMIREG", "CUR REGI", "Register for Current of custom electric meter", 0, 65535, EMCUSTOM_IREGISTER},
     {"ENIDIV", "CUR DIVI", "Divisor for Current of custom electric meter", 0, 8, EMCUSTOM_IDIVISOR},
+    {"EMVREG", "CUR REGI", "Register for Voltage of custom electric meter", 0, 65535, EMCUSTOM_VREGISTER},
+    {"ENVDIV", "CUR DIVI", "Divisor for Voltage of custom electric meter", 0, 8, EMCUSTOM_VDIVISOR},
     {"EMEREG", "ENE REGI", "Register for Energy of custom electric meter", 0, 65535, EMCUSTOM_EREGISTER},
     {"ENEDIV", "ENE DIVI", "Divisor for Energy of custom electric meter", 0, 8, EMCUSTOM_EDIVISOR},
     {"EXIT",   "EXIT",     "EXIT", 0, 0, 0}
