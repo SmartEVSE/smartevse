@@ -2121,7 +2121,7 @@ void HandleRapi(void) {
                 SendRapiReply("OK %d %d", GetRapiState(), ChargeTimer); 
                 break;
             case 'T': SendRapiReply("NK"); break;                               // date/time not supported
-            case 'U': SendRapiReply("OK %d %d", (int)(EnergyCharged*3600*1000), (int)(EnergyEV*1000)); break;
+            case 'U': SendRapiReply("OK %.0f %.0f", EnergyCharged*3600.0*1000.0, EnergyEV*1000.0); break;
             case 'V': SendRapiReply("OK SmartEVSE_%s %s", VERSION, RAPI_VERSION); break;
             case 'X': SendRapiReply("OK %d", Mode); break;                      // charge mode: 0=Normal/Fixed, 1=Smart, 2=Solar
             case 'Y': 
