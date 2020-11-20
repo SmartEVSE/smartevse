@@ -2189,7 +2189,7 @@ void HandleRapi(void) {
                 if (ISR2FLAG>5) {
                     int newmode=atoi(&U2buffer[3]);
                     if (newmode>=0 && newmode<3) {
-                        Mode=newmode;
+                        Mode = newmode;
                         ChargeDelay = 0;                                        // Clear any Chargedelay 
                         SolarTimerEnable = 0;                                   // Also make sure the SolarTimer is disabled.
                                                                                 // Broadcast change of Charging mode (Solar/Smart) to slave EVSE's
@@ -2680,8 +2680,8 @@ void UpdateCurrentData(void) {
 
 void main(void) {
     unsigned char x, leftbutton, RB2low = 0;
-    unsigned char count = 0, timeout = 5, DataReceived = 0, MainsReceived=0;
-    unsigned char DiodeCheck = 0, ItemID, ActivationMode = 0, ActivationTimer = 0;
+    unsigned char count = 0, timeout = 5, DataReceived = 0, MainsReceived=0, diode=PILOT_NOK;
+    unsigned char DiodeCheck = 0, ItemID, ActivationMode = 255, ActivationTimer = 0;
     unsigned char SlaveAdr, Broadcast = 0, RB2count = 0, RB2last = 1, Sens2s = 1;
     unsigned int BalancedReceived;
     signed double PV[3]={0, 0, 0};
@@ -2948,92 +2948,88 @@ void main(void) {
         
         if (State == STATE_B)                                                   
         {
+            while (TMR2 < 7 || TMR2 > 24);                                      // wait till TMR2 is between 3% - 9%, otherwise we'll miss it (blocking)
                                                                                 // measure voltage at ~5% and ~90% of PWM cycle
-            if ((TMR2 > 7) && (TMR2 < 24))                                      // PWM cycle 3% - 9% (should be high)
+            pilot = ReadPilot();
+            
+            if (pilot == PILOT_12V)                                             // Disconnected?
             {
-                pilot = ReadPilot();
-                if (pilot == PILOT_12V)                                         // Disconnected?
-                {
-                    if (NextState == STATE_A) {
-                        if (count++ > 25)                                       // repeat 25 times (changed in v2.05)
+                if (NextState == STATE_A) {
+                    if (count++ > 25)                                           // repeat 25 times (changed in v2.05)
+                    {
+                        State = STATE_A;                                        // switch to STATE_A
+                        STATE_PRINT("STATE B->A\r\n");
+                        if (LoadBl > 1)                                         // Load Balancing : Slave 
                         {
-                            State = STATE_A;                                    // switch to STATE_A
-                            STATE_PRINT("STATE B->A\r\n");
+                            State = STATE_COMM_A;                               // Tell Master we switched to State A
+                            Timer = ACK_TIMEOUT + 1;                            // Set the timer to Timeout value, so that it expires immediately
+                        }
+                    }
+                } else {
+                    NextState = STATE_A;
+                    count = 0;
+                }
+            } else if (pilot == PILOT_6V) {
+                if ((NextState == STATE_C) && (DiodeCheck == 1)) {
+                    if (count++ > 25)                                           // repeat 25 times (changed in v2.05)
+                    {
+                        if ((Error == NO_ERROR) && (ChargeDelay == 0)) {
                             if (LoadBl > 1)                                     // Load Balancing : Slave 
                             {
-                                State = STATE_COMM_A;                           // Tell Master we switched to State A
-                                Timer = ACK_TIMEOUT + 1;                        // Set the timer to Timeout value, so that it expires immediately
-                            }
-                        }
-                    } else {
-                        NextState = STATE_A;
-                        count = 0;
-                    }
-                } else if (pilot == PILOT_6V) {
-                    if ((NextState == STATE_C) && (DiodeCheck == 1)) {
-                        if (count++ > 25)                                       // repeat 25 times (changed in v2.05)
-                        {
-                            if ((Error == NO_ERROR) && (ChargeDelay == 0)) {
-                                if (LoadBl > 1)                                 // Load Balancing : Slave 
-                                {
-                                    // Send command to Master, followed by Charge Current
-                                    ModbusWriteSingleRequest(LoadBl, 0x03, ChargeCurrent);
-                                    INFO_PRINT("03 sent to Master, requested %.1f A\r\n", (double)ChargeCurrent/10);
-                                    State = STATE_COMM_C;
-                                    Timer = 0;                                  // Clear the Timer
-                                } else {                                        // Load Balancing: Master or Disabled
-                                    BalancedMax[0] = ChargeCurrent;
-                                    if (IsCurrentAvailable() == 0) {
-                                        BalancedState[0] = 2;                   // Mark as Charging
-                                        Balanced[0] = 0;                        // For correct baseload calculation set current to zero
-                                        CalcBalancedCurrent(1);                 // Calculate charge current for all connected EVSE's
+                                // Send command to Master, followed by Charge Current
+                                ModbusWriteSingleRequest(LoadBl, 0x03, ChargeCurrent);
+                                INFO_PRINT("03 sent to Master, requested %.1f A\r\n", (double)ChargeCurrent/10);
+                                State = STATE_COMM_C;
+                                Timer = 0;                                      // Clear the Timer
+                            } else {                                            // Load Balancing: Master or Disabled
+                                BalancedMax[0] = ChargeCurrent;
+                                if (IsCurrentAvailable() == 0) {
+                                    BalancedState[0] = 2;                       // Mark as Charging
+                                    Balanced[0] = 0;                            // For correct baseload calculation set current to zero
+                                    CalcBalancedCurrent(1);                     // Calculate charge current for all connected EVSE's
 
-                                        CONTACTOR_ON;                           // Contactor ON
-                                        ActivationMode = 255;                   // Disable ActivationMode                                
-                                        DiodeCheck = 0;
-                                        State = STATE_C;                        // switch to STATE_C
-                                        LCDTimer = 0;
-                                        Timer = 0;                              // reset msTimer and ChargeTimer
-                                        ChargeTimer = 0;
-                                        if (EVMeter && ResetKwh) {
-                                            EnergyMeterStart = EnergyEV;        // store kwh measurement at start of charging.
-                                            ResetKwh = 0;                       // clear flag, will be set when disconnected from EVSE (State A)
-                                        }
-                                        if (!LCDNav)                            // Don't update the LCD if we are navigating the menu
-                                        {
-                                            GLCD();                             // immediately update LCD (20ms)
-                                        }
-                                        STATE_PRINT("STATE B->C\r\n");
+                                    CONTACTOR_ON;                               // Contactor ON
+                                    ActivationMode = 255;                       // Disable ActivationMode                                
+                                    DiodeCheck = 0;
+                                    State = STATE_C;                            // switch to STATE_C
+                                    LCDTimer = 0;
+                                    Timer = 0;                                  // reset msTimer and ChargeTimer
+                                    ChargeTimer = 0;
+                                    if (EVMeter && ResetKwh) {
+                                        EnergyMeterStart = EnergyEV;            // store kwh measurement at start of charging.
+                                        ResetKwh = 0;                           // clear flag, will be set when disconnected from EVSE (State A)
                                     }
-                                    else Error |= NOCURRENT;
+                                    if (!LCDNav)                                // Don't update the LCD if we are navigating the menu
+                                    {
+                                        GLCD();                                 // immediately update LCD (20ms)
+                                    }
+                                    STATE_PRINT("STATE B->C\r\n");
                                 }
+                                else Error |= NOCURRENT;
                             }
                         }
-                    } else {
-                        NextState = STATE_C;
-                        count = 0;
                     }
-                } else {                                                        // PILOT_9V
-                                       
-                    if (ActivationMode == 0) {
-                        State = STATE_ACTSTART;
-                        ActivationTimer = 3;
-                        CCP1CON = 0;                                            // PWM off
-                        PORTCbits.RC2 = 0;                                      // Control pilot static -12V
-                        INFO_PRINT("Activation Mode Triggered\r\n");
-                    }
-                    NextState = 0;                                              // no State to switch to
+                } else {
+                    NextState = STATE_C;
+                    count = 0;
                 }
-            }
-            if (TMR2 > 230)                                                     // PWM > 92%
-            {
-                while (TMR2 < 242);                                             // wait till TMR2 is in range, otherwise we'll miss it (blocking)
-                if ((TMR2 > 241) && (TMR2 < 249))                               // PWM cycle >= 96% (should be low)
-                {
-                    if (ReadPilot() == PILOT_DIODE) DiodeCheck = 1;                   // Diode found, OK
-                    else DiodeCheck = 0;
+            } else {                                                            // PILOT_9V
+
+                if (ActivationMode == 0) {
+                    State = STATE_ACTSTART;
+                    ActivationTimer = 3;
+                    CCP1CON = 0;                                                // PWM off
+                    PORTCbits.RC2 = 0;                                          // Control pilot static -12V
+                    INFO_PRINT("Activation Mode Triggered\r\n");
                 }
+                NextState = 0;                                                  // no State to switch to
             }
+
+            while (TMR2 < 242);                                                 // wait till TMR2 is in range >= 96% (should be low), otherwise we'll miss it (blocking) 
+
+            diode = ReadPilot();
+            if (diode == PILOT_DIODE) DiodeCheck = 1;                     // Diode found, OK
+            else DiodeCheck = 0;
         }
         
         if (State == STATE_ACTSTART && ActivationTimer == 0) {
@@ -3052,59 +3048,56 @@ void main(void) {
         // ############### EVSE State C #################
         
         if (State == STATE_C)                                
-        {                                                                       // measure voltage at ~5% of PWM cycle
-            if ((TMR2 > 7) && (TMR2 < 24))                                      // cycle 3% - 9% (should be high)
+        {   
+            while (TMR2 < 7 || TMR2 > 24);                                      // wait till TMR2 is between 3% - 9%, otherwise we'll miss it (blocking)
+            pilot = ReadPilot();
+            
+            if ((pilot == PILOT_12V) || (pilot == PILOT_NOK))                   // Disconnected or Error?
             {
-                pilot = ReadPilot();
-                if ((pilot == PILOT_12V) || (pilot == PILOT_NOK))               // Disconnected or Error?
-                {
-                    if (NextState == STATE_A) {
-                        if (count++ > 25)                                       // repeat 25 times (changed in v2.05)
+                if (NextState == STATE_A) {
+                    if (count++ > 25)                                           // repeat 25 times (changed in v2.05)
+                    {
+                        CONTACTOR_OFF;                                          // Contactor OFF
+                        State = STATE_A;                                        // switch back to STATE_A
+                        STATE_PRINT("STATE C->A\r\n");
+                        GLCD_init();                                            // Re-init LCD
+                        if (LoadBl > 1)                                         // Load Balancing : Slave 
                         {
-                            CONTACTOR_OFF;                                      // Contactor OFF
-                            State = STATE_A;                                    // switch back to STATE_A
-                            STATE_PRINT("STATE C->A\r\n");
-                            GLCD_init();                                        // Re-init LCD
-                            if (LoadBl > 1)                                     // Load Balancing : Slave 
-                            {
-                                State = STATE_COMM_A;                           // Tell Master we switched to State A
-                                Timer = ACK_TIMEOUT + 1;                        // Set the timer to Timeout value, so that it expires immediately
-                            }
-                            else BalancedState[0] = 0;                          // Master or Disabled
+                            State = STATE_COMM_A;                               // Tell Master we switched to State A
+                            Timer = ACK_TIMEOUT + 1;                            // Set the timer to Timeout value, so that it expires immediately
+                        }
+                        else BalancedState[0] = 0;                              // Master or Disabled
                                                                                 // Mark EVSE as disconnected
-                        }
-                    } else {
-                        NextState = STATE_A;
-                        count = 0;
                     }
-                } else if (pilot == PILOT_9V) {
-                    if (NextState == STATE_B) {
-                        if (count++ > 25)                                       // repeat 25 times
-                        {
-                            CONTACTOR_OFF;                                      // Contactor OFF
-                            State = STATE_B;                                    // switch back to STATE_B
-                            STATE_PRINT("STATE C->B\r\n");
-                            GLCD_init();                                        // Re-init LCD (200ms delay)
-                            DiodeCheck = 0;
-                       
-                            if (LoadBl > 1)                                     // Load Balancing : Slave 
-                            {
-                                State = STATE_COMM_CB;                          // Send 04 command to Master
-                                Timer = ACK_TIMEOUT + 1;                        // Set the timer to Timeout value, so that it expires immediately
-                            } else BalancedState[0] = 1;                        // Master or Disabled
-                                                                                // Mark EVSE as inactive (still State B)
-                        }
-                    } else {
-                        NextState = STATE_B;
-                        count = 0;
-                    }
-                } else {                                                        // PILOT_6V
-                    NextState = 0;                                              // no State to switch to	
+                } else {
+                    NextState = STATE_A;
+                    count = 0;
                 }
+            } else if (pilot == PILOT_9V) {
+                if (NextState == STATE_B) {
+                    if (count++ > 25)                                           // repeat 25 times
+                    {
+                        CONTACTOR_OFF;                                          // Contactor OFF
+                        State = STATE_B;                                        // switch back to STATE_B
+                        STATE_PRINT("STATE C->B\r\n");
+                        GLCD_init();                                            // Re-init LCD (200ms delay)
+                        DiodeCheck = 0;
+
+                        if (LoadBl > 1)                                         // Load Balancing : Slave 
+                        {
+                            State = STATE_COMM_CB;                              // Send 04 command to Master
+                            Timer = ACK_TIMEOUT + 1;                            // Set the timer to Timeout value, so that it expires immediately
+                        } else BalancedState[0] = 1;                            // Master or Disabled
+                                                                                // Mark EVSE as inactive (still State B)
+                    }
+                } else {
+                    NextState = STATE_B;
+                    count = 0;
+                }
+            } else {                                                            // PILOT_6V
+                NextState = 0;                                                  // no State to switch to	
             }
         } // end of State C code
-
-        
         
         if ((State == STATE_COMM_CB) && (Timer > ACK_TIMEOUT)) {
             // Send command to Master
