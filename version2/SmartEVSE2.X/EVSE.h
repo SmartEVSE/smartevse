@@ -32,8 +32,10 @@
 #include "GLCD.h"
 
 
-#define VERSION "2.17"                                                          // SmartEVSE software version
-//#define DEBUG_P                                                                 // Debug print enable/disable
+#define VERSION "2.18"                                                          // SmartEVSE software version
+#define RAPI_VERSION "4.0.1"                                                    // Supported OpenEVSE RAPI version
+#define RAPI_TIMEOUT 10                                                         // RAPI timeout (in s) only provide async updates if last command within this time
+//#define DEBUG_P                                                               // Debug print enable/disable
 #define TRANSFORMER_COMP 1.00                                                   // Current calculation compensation option for use with 230V-400V transformers,
                                                                                 // where the primary (MAINS) current is 1.73 times the secondary (EVSE) current.
                                                                                 // set to 1.00 for normal use, and to 1.73 for use with a transformer.
@@ -41,7 +43,8 @@
 //#define SPECIAL                                                                 // if defined, it will modify program so that some menu options are not shown
                                                                                 // should be undefined by default
 
-//#define MODBUSPRINT                                                             // debug print the modbus messages
+//#define MODBUSPRINT                                                           // debug print the modbus messages
+#define MODBUS_REQUEST_INTERVAL 100                                             // Minimum interval between modbus requests (set to 100ms to maximize compatibility)
 
 #define ICAL 1.00                                                               // Irms Calibration value (for Current transformers) 
 #define MAX_MAINS 25                                                            // max Current the Mains connection can supply
@@ -72,8 +75,13 @@
 #define EV_METER 0
 #define EV_METER_ADDRESS 12
 #define EMCUSTOM_ENDIANESS 0
+#define EMCUSTOM_DATAFORMAT 0
 #define EMCUSTOM_IREGISTER 0
 #define EMCUSTOM_IDIVISOR 0
+#define EMCUSTOM_VREGISTER 0
+#define EMCUSTOM_VDIVISOR 0
+#define EMCUSTOM_EREGISTER 0
+#define EMCUSTOM_EDIVISOR 0
 
 // Mode settings
 #define MODE_NORMAL 0
@@ -150,9 +158,14 @@
 #define MENU_EVMETER 22
 #define MENU_EVMETERADDRESS 23
 #define MENU_EMCUSTOM_ENDIANESS 24
-#define MENU_EMCUSTOM_IREGISTER 25
-#define MENU_EMCUSTOM_IDIVISOR 26
-#define MENU_EXIT 27
+#define MENU_EMCUSTOM_DATAFORMAT 25
+#define MENU_EMCUSTOM_IREGISTER 26
+#define MENU_EMCUSTOM_IDIVISOR 27
+#define MENU_EMCUSTOM_VREGISTER 28
+#define MENU_EMCUSTOM_VDIVISOR 29
+#define MENU_EMCUSTOM_EREGISTER 30
+#define MENU_EMCUSTOM_EDIVISOR 31
+#define MENU_EXIT 32
 
 #define STATUS_STATE 64
 #define STATUS_ERROR 65
@@ -164,12 +177,6 @@
 #define STATUS_ACCESS 71
 #define STATUS_MODE 72
 
-#define EM_SENSORBOX 1                                                          // Mains meter types
-#define EM_PHOENIX_CONTACT 2
-#define EM_FINDER 3
-#define EM_EASTRON 4
-#define EM_CUSTOM 5
-
 #define MODBUS_INVALID 0
 #define MODBUS_OK 1
 #define MODBUS_REQUEST 2
@@ -179,15 +186,51 @@
 #define MODBUS_EXCEPTION_ILLEGAL_DATA_VALUE 0x03
 
 #ifdef DEBUG_P
-#define DEBUG_PRINT(x) printf x
+#define DEBUG_PRINT(x) printf(x)
 #else
 #define DEBUG_PRINT(x)
 #endif 
+
+#ifdef DEBUG_P
+#define INFO_PRINT(x) printf(x)
+#else
+#define INFO_PRINT(x) {if (RAPITimer==0) printf(x);}
+#endif 
+
+void SendRapiReply(const char* fmt, ...);
+unsigned char GetRapiState(void);
+extern unsigned char prevRapiState;
+
+#define STATE_PRINT(x) \
+    { \
+        if (RAPITimer==0) \
+            printf(x); \
+        else { \
+            unsigned char rapiState = GetRapiState(); \
+            if (prevRapiState != rapiState) { \
+                SendRapiReply("ST %02x", rapiState); \
+                prevRapiState=rapiState; \
+            } \
+        } \
+    }
 
 #define _RSTB_0 LATCbits.LATC4 = 0;
 #define _RSTB_1 LATCbits.LATC4 = 1;
 #define _A0_0 LATCbits.LATC0 = 0;
 #define _A0_1 LATCbits.LATC0 = 1;
+
+#define DATAFORMAT_8N1 0
+#define DATAFORMAT_8N2 1
+#define DATAFORMAT_8E1 2
+#define DATAFORMAT_8O1 3
+
+#define ENDIANESS_LBF_LWF 0
+#define ENDIANESS_LBF_HWF 1
+#define ENDIANESS_HBF_LWF 2
+#define ENDIANESS_HBF_HWF 3
+
+// Validate defines
+
 
 extern char GLCDbuf[512];                                                       // GLCD buffer (half of the display)
 
@@ -215,15 +258,18 @@ extern unsigned char EVMeter;                                                   
 extern unsigned char EVMeterAddress;
 
 extern signed double Irms[3];                                                   // Momentary current per Phase (Amps *10) (23 = 2.3A)
+extern double EVIrms[3];                                                        // Momentary current per Phase to the EV (Amps *10) (23 = 2.3A)
 
 extern unsigned char State;
 extern unsigned char Error;
 extern unsigned char NextState;
 
+extern unsigned char pilot;
+
 extern unsigned int MaxCapacity;                                                // Cable limit (Amps)(limited by the wire in the charge cable, set automatically, or manually if Config=Fixed Cable)
 extern unsigned int Imeasured;                                                  // Max of all CT inputs (Amps * 10) (23 = 2.3A)
 extern signed int Isum;
-extern unsigned int Balanced[4];                                                // Amps value per EVSE (max 4)
+extern unsigned int Balanced[4];                                                // Current (Amps*10) value per EVSE (max 4)
 
 extern unsigned char RX1byte;
 extern unsigned char idx2, ISR2FLAG;
@@ -247,7 +293,37 @@ extern unsigned int SolarStopTimer;
 extern unsigned char SolarTimerEnable;
 extern signed double EnergyCharged;
 
-extern unsigned char MenuItems[27];
+#define EM_SENSORBOX 1                                                          // Mains meter types
+#define EM_PHOENIX_CONTACT 2
+#define EM_FINDER 3
+#define EM_EASTRON 4
+#define EM_YTL 5
+#define EM_CUSTOM 6
+
+struct {
+    unsigned char Desc[10];
+    unsigned char Endianness; // 0: low byte first, low word first, 1: low byte first, high word first, 2: high byte first, low word first, 3: high byte first, high word first
+    unsigned char DataFormat; // Stop bits / Parity
+    unsigned char Function; // Modbus function: 3 = holding registers, 4 = input registers
+    unsigned int IRegister; // Single phase current (A)
+    unsigned char IDivisor; // 10^x / 8:double
+    unsigned int VRegister; // Single phase voltage (A)
+    unsigned char VDivisor; // 10^x / 8:double
+    unsigned int ERegister; // Total energy (kWh)
+    unsigned char EDivisor; // 10^x / 8:double
+    unsigned int PRegister; // Total power (W)
+    unsigned char PDivisor; // 10^x / 8:double
+} EMConfig[7] = {
+    {"Disabled",  ENDIANESS_LBF_LWF, DATAFORMAT_8N1, 0,      0, 0,      0, 0,      0, 0,      0, 0}, // First entry!
+    {"Sensorbox", ENDIANESS_HBF_HWF, DATAFORMAT_8N1, 4,      0, 0, 0xFFFF, 0, 0xFFFF, 0, 0xFFFF, 0}, // Sensorbox (Own routine for request/receive)
+    {"Phoenix C", ENDIANESS_HBF_LWF, DATAFORMAT_8N1, 4,    0xC, 3,    0x0, 1,   0x3E, 1,   0x28, 1}, // PHOENIX CONTACT EEM-350-D-MCB (mA / 0,1kWh / 0,1W)
+    {"Finder",    ENDIANESS_HBF_HWF, DATAFORMAT_8N1, 4, 0x100E, 8, 0x1000, 8, 0x1106, 8, 0x1026, 8}, // Finder 7E.78.8.400.0212 (A / Wh / W)
+    {"Eastron",   ENDIANESS_HBF_HWF, DATAFORMAT_8N1, 4,    0x6, 8,    0x0, 8,  0x156, 8,   0x34, 8}, // Eastron SDM630 (Own routine for request/receive) (A / kWh / W)
+    {"YTL",       ENDIANESS_HBF_HWF, DATAFORMAT_8N2, 3,   0x16, 8,    0xE, 8,  0x100, 8,   0x2e, 8}, // YTL DTS353F-2
+    {"Custom",    ENDIANESS_LBF_LWF, DATAFORMAT_8N1, 4,      0, 0,      0, 0,      0, 0, 0xFFFF, 0}  // Last entry!
+};
+
+extern unsigned char MenuItems[];
 
 const far struct {
     char Key[8];
@@ -256,7 +332,7 @@ const far struct {
     unsigned int Min;
     unsigned int Max;
     unsigned int Default;
-} MenuStr[28] = {
+} MenuStr[] = {
     {"",       "",         "Not in menu", 0, 0, 0},
     {"",       "",         "Hold 2 sec", 0, 0, 0},
     {"CONFIG", "CONFIG",   "Set to Fixed Cable or Type 2 Socket", 0, 1, CONFIG},
@@ -273,36 +349,23 @@ const far struct {
     {"MODE",   "MODE",     "Set to Normal, Smart or Solar EVSE mode", 0, 2, MODE},
     {"MAINS",  "MAINS",    "Set Max MAINS Current", 10, 100, MAX_MAINS},
     {"CAL",    "CAL",      "Calibrate CT1 (CT2+3 will also change)", 30, 200, (unsigned int) (ICAL * 100)},         // valid range is 0.3 - 2.0 times measured value
-    {"MAINEM", "MAINSMET", "Type of mains electric meter", 1, 5, MAINS_METER},
+    {"MAINEM", "MAINSMET", "Type of mains electric meter", 1, sizeof(EMConfig)/sizeof(EMConfig[0])-1, MAINS_METER},
     {"GRID",   "GRID",     "Grid type to which the Sensorbox is connected", 0, 1, GRID},
     {"MAINAD", "MAINSADR", "Address of mains electric meter", 5, 255, MAINS_METER_ADDRESS},
     {"MAINM",  "MAINSMES", "Mains electric meter scope (What does it measure?)", 0, 1, MAINS_METER_MEASURE},
-    {"PVEM",   "PV METER", "Type of PV electric meter", 0, 5, PV_METER},
+    {"PVEM",   "PV METER", "Type of PV electric meter", 0, sizeof(EMConfig)/sizeof(EMConfig[0])-1, PV_METER},
     {"PVAD",   "PV ADDR",  "Address of PV electric meter", 5, 255, PV_METER_ADDRESS},
-    {"EVEM",   "EV METER", "Type of EV electric meter", 0, 4, EV_METER},
+    {"EVEM",   "EV METER", "Type of EV electric meter", 0, sizeof(EMConfig)/sizeof(EMConfig[0])-1, EV_METER},
     {"EVAD",   "EV ADDR",  "Address of EV electric meter", 5, 255, EV_METER_ADDRESS},
     {"EMBO" ,  "BYTE ORD", "Byte order of custom electric meter", 0, 3, EMCUSTOM_ENDIANESS},
-    {"EMIREG", "CUR REGI", "Register for Current of custom electric meter", 0, 255, EMCUSTOM_IREGISTER},
+    {"EMDF" ,  "PROTOCOL", "Data format of custom electric meter", 0, 3, EMCUSTOM_DATAFORMAT},
+    {"EMIREG", "CUR REGI", "Register for Current of custom electric meter", 0, 65535, EMCUSTOM_IREGISTER},
     {"ENIDIV", "CUR DIVI", "Divisor for Current of custom electric meter", 0, 8, EMCUSTOM_IDIVISOR},
+    {"EMVREG", "CUR REGI", "Register for Voltage of custom electric meter", 0, 65535, EMCUSTOM_VREGISTER},
+    {"ENVDIV", "CUR DIVI", "Divisor for Voltage of custom electric meter", 0, 8, EMCUSTOM_VDIVISOR},
+    {"EMEREG", "ENE REGI", "Register for Energy of custom electric meter", 0, 65535, EMCUSTOM_EREGISTER},
+    {"ENEDIV", "ENE DIVI", "Divisor for Energy of custom electric meter", 0, 8, EMCUSTOM_EDIVISOR},
     {"EXIT",   "EXIT",     "EXIT", 0, 0, 0}
-};
-
-struct {
-    unsigned char Desc[10];
-    unsigned char Endianness; // 0: low byte first, low word first, 1: low byte first, high word first, 2: high byte first, low word first, 3: high byte first, high word first
-    unsigned int IRegister; // Single phase current (A)
-    unsigned char IDivisor; // 10^x / 8:double
-    unsigned int ERegister; // Total energy (kWh)
-    unsigned char EDivisor; // 10^x / 8:double
-    unsigned int PRegister; // Total power (W)
-    unsigned char PDivisor; // 10^x / 8:double
-} EMConfig[6] = {
-    {"Disabled",  0,      0, 0,      0, 0,      0, 0}, // First entry!
-    {"Sensorbox", 3,      0, 0, 0xFFFF, 0, 0xFFFF, 0}, // Sensorbox (Own routine for request/receive)
-    {"Phoenix C", 2,    0xC, 3,   0x3E, 1,   0x28, 1}, // PHOENIX CONTACT EEM-350-D-MCB (mA / 0,1kWh / 0,1W)
-    {"Finder",    3, 0x100E, 8, 0x1106, 8, 0x1026, 8}, // Finder 7E.78.8.400.0212 (A / Wh / W)
-    {"Eastron",   3,    0x6, 8,  0x156, 8,   0x34, 8}, // Eastron SDM630 (Own routine for request/receive) (A / kWh / W)
-    {"Custom",    0,      0, 0, 0xFFFF, 0, 0xFFFF, 0}  // Last entry!
 };
 
 void delay(unsigned int d);
