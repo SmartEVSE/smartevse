@@ -269,7 +269,7 @@ extern unsigned char pilot;
 extern unsigned int MaxCapacity;                                                // Cable limit (Amps)(limited by the wire in the charge cable, set automatically, or manually if Config=Fixed Cable)
 extern unsigned int Imeasured;                                                  // Max of all CT inputs (Amps * 10) (23 = 2.3A)
 extern signed int Isum;
-extern unsigned int Balanced[4];                                                // Amps value per EVSE (max 4)
+extern unsigned int Balanced[4];                                                // Current (Amps*10) value per EVSE (max 4)
 
 extern unsigned char RX1byte;
 extern unsigned char idx2, ISR2FLAG;

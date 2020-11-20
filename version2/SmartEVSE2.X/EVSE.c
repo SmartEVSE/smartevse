@@ -2112,7 +2112,7 @@ void HandleRapi(void) {
             case 'F': SendRapiReply("OK 0 0 0"); break;                         // Fault counters not supported (gfitripcnt nogndtripcnt stuckrelaytripcnt)
             case 'G': 
                 SendRapiReply("OK %d %.0f", 
-                    (int)(EVMeter?(EVIrms[0]+EVIrms[1]+EVIrms[2]):(Balanced[0])*100), // total current
+                    (int)(EVMeter?(EVIrms[0]+EVIrms[1]+EVIrms[2])*100:(Balanced[0])*100), // total current
                     (Vrms[0]>Vrms[1]?Vrms[0]:(Vrms[1]>Vrms[2]?Vrms[1]:Vrms[2]))*1000); // maximum voltage
                 break; 
             case 'H': SendRapiReply("OK %d", 0); break;                         // Charge limit in kWh
