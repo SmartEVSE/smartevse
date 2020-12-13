@@ -87,6 +87,7 @@ Information on how to compile and setup the controller can be found on the [smar
 # Modbus registers
 
 Baudrate is 9600bps 8N1 (8bit, no parity bit, one stop bit)<br>
+With the SmartEVSE in normal mode (not load balancing master/slave) it will listen to slaveID = 0 (broadcast address) or slaveID=1<br>
 All registers are 16 bit unsigned integers.<br>
 
 ## Register 0x0*: Broadcast Chargecurrent or Error
