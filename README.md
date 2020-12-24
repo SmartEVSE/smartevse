@@ -82,14 +82,28 @@ Information on how to compile and setup the controller can be found on the [smar
 - PHOENIX CONTACT EEM-350-D-MCB (2)
 - Finder 7E.78.8.400.0212 (3)
 - Eastron SDM630 (4)
-- Custom (5)
+- ABB B23 212-100 (5)
+- Custom (6)
 
-# Modbus registers
+# Modbus
 
-Baudrate is 9600bps 8N1 (8bit, no parity bit, one stop bit)<br>
-All registers are 16 bit unsigned integers.<br>
+Baudrate is 9600bps 8N1 (8bit, no parity bit, one stop bit).
+All registers are 16 bit unsigned integers.
+Address depends on the Load Balancing configuration:
 
-## Register 0x0*: Broadcast Chargecurrent or Error
+Load Balancing | Modbus Address
+--- | ---
+Disabled | 0x00
+Master | 0x01
+Slave 1 | 0x02
+Slave 2 | 0x03
+... | ...
+
+Broadcast to all SmartEVSE with address 0x09.
+
+## Register for internal SmartEVSE communication
+
+### Register 0x000*: Broadcast Chargecurrent or Error
 
 Register | Access | Description | Unit | Values
 --- | --- | --- | --- | ---
@@ -98,9 +112,9 @@ Register | Access | Description | Unit | Values
 
 Register 0x01 is written to every 2 seconds by the Master, and holds the Charge Current per Slave EVSE. A total of 4 words (8 bytes) are written, One word per EVSE(0-3).<br>
 Register 0x02 is written to only if an error occurred.<br>
-Use function code 0x10 (Preset Multiple Registers), and broadcast address 0x00 to use this feature.<br>
+Use function code 0x10 (Preset Multiple Registers), and broadcast address 0x09 to use this feature.<br>
 
-## Register 0x008*: Ack State change
+### Register 0x008*: Ack State change
 
 Register | Access | Description | Unit | Values
 --- | --- | --- | --- | ---
@@ -110,9 +124,10 @@ Register | Access | Description | Unit | Values
 Register 0x82 and 0x83 are written by the Master to tell the Slave that it recognised a state change request.<br>
 If ok, the value of the register contains the initial chargecurrent (usually 6.0 A)<br>
 Use function code 0x06 (Preset Single Register) to write to these registers.<br>
-The Slave addresses are Slave nr +1 (2-4).<br>
 
-## Register 0x00A*: Current state
+## Register for external devices
+
+### Register 0x00A*: Current state
 
 Register | Access | Description | Unit | Values
 --- | --- | --- | --- | ---
@@ -126,14 +141,14 @@ Register | Access | Description | Unit | Values
 0x00A7 | R/W | Access bit | | 0:No Access / 1:Access
 0x00A8 | R/W | EVSE mode (without saving) | | 0:Normal / 1:Smart / 2:Solar
 
-## Register 0x00C*: Configuration
+### Register 0x00C*: Individual configuration
 
 Register | Access | Description | Unit | Values
 --- | --- | --- | --- | ---
 0x00C0 | R/W | Configuration | | 0:Socket / 1:Fixed Cable
 0x00C1 | R/W | Load Balance (Also address of the device ) | | 0:Disabled / 1:Master / 2-4:Slave
 0x00C2 | R/W | Minimal current the EV is happy with | A | 6 - 16
-0x00C3 | R/W | Cable Current limit | A | 13 - 80
+0x00C3 | R/W | Cable Current limit | A | 13 - 160
 0x00C4 | R/W | Cable lock | | 0:Disable / 1:Solenoid / 2:Motor
 0x00C5 | R/W | Surplus energy start Current | A | 1 - 16
 0x00C6 | R/W | Stop solar charging at 6A after this time | min | 0:Disable / 1 - 60
@@ -144,13 +159,13 @@ Register | Access | Description | Unit | Values
 0x00CB | R/W | Type of EV electric meter | | *
 0x00CC | R/W | Address of EV electric meter | | 10 - 247
 
-## Register 0x00E*: Load balancing configuration (same on all SmartEVSE)
+### Register 0x00E*: System configuration (same on all Load Balancing SmartEVSE)
 
 Register | Access | Description | Unit | Values
 --- | --- | --- | --- | ---
 0x00E0 | R/W | Max Charge Current of the system | A | 10 - 80
 0x00E1 | R/W | EVSE mode | | 0:Normal / 1:Smart / 2:Solar
-0x00E2 | R/W | Max Mains Current | A | 10 - 100
+0x00E2 | R/W | Max Mains Current | A | 10 - 200
 0x00E3 | R/W | CT calibration value | 0.01 | Multiplier
 0x00E4 | R/W | Type of Mains electric meter | | *
 0x00E5 | R/W | Address of Mains electric meter | | 10 - 247
