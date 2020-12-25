@@ -147,8 +147,8 @@ Register | Access | Description | Unit | Values
 --- | --- | --- | --- | ---
 0x00C0 | R/W | Configuration | | 0:Socket / 1:Fixed Cable
 0x00C1 | R/W | Load Balance (Also address of the device ) | | 0:Disabled / 1:Master / 2-4:Slave
-0x00C2 | R/W | Minimal current the EV is happy with | A | 6 - 16
-0x00C3 | R/W | Cable Current limit | A | 13 - 160
+0x00C2 | R/W | MIN Charge Current the EV will accept | A | 6 - 16
+0x00C3 | R/W | MAX Charge Current for this EVSE | A | 6 - 80
 0x00C4 | R/W | Cable lock | | 0:Disable / 1:Solenoid / 2:Motor
 0x00C5 | R/W | Surplus energy start Current | A | 1 - 16
 0x00C6 | R/W | Stop solar charging at 6A after this time | min | 0:Disable / 1 - 60
@@ -163,7 +163,7 @@ Register | Access | Description | Unit | Values
 
 Register | Access | Description | Unit | Values
 --- | --- | --- | --- | ---
-0x00E0 | R/W | Max Charge Current of the system | A | 10 - 80
+0x00E0 | R/W | EVSE Circuit max Current | A | 10 - 160
 0x00E1 | R/W | EVSE mode | | 0:Normal / 1:Smart / 2:Solar
 0x00E2 | R/W | Max Mains Current | A | 10 - 200
 0x00E3 | R/W | CT calibration value | 0.01 | Multiplier
