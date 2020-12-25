@@ -95,8 +95,8 @@ Load Balancing | Modbus Address
 --- | ---
 Disabled | 0x00
 Master | 0x01
-Slave 1 | 0x02
-Slave 2 | 0x03
+Node 1 | 0x02
+Node 2 | 0x03
 ... | ...
 
 Broadcast to all SmartEVSE with address 0x09.
@@ -110,7 +110,7 @@ Register | Access | Description | Unit | Values
 0x01 | W | Broadcast ChargeCurrent | 0.1 A | Charge Current (0 A = no current available)
 0x02 | W | Broadcast Error | Bit | 1:LESS_6A / 2:NO_COMM / 4:TEMP_HIGH / 8:NO_CURRENT / 16:RCD / 32:NO_SUN
 
-Register 0x01 is written to every 2 seconds by the Master, and holds the Charge Current per Slave EVSE. A total of 4 words (8 bytes) are written, One word per EVSE(0-3).<br>
+Register 0x01 is written to every 2 seconds by the Master, and holds the Charge Current per Node EVSE. A total of 4 words (8 bytes) are written, One word per EVSE(0-3).<br>
 Register 0x02 is written to only if an error occurred.<br>
 Use function code 0x10 (Preset Multiple Registers), and broadcast address 0x09 to use this feature.<br>
 
@@ -121,7 +121,7 @@ Register | Access | Description | Unit | Values
 0x0082 | W | Ack State A->B | 0.1 A | Charge Current (0 A = no current available)
 0x0083 | W | Ack State B->C | 0.1 A | Charge Current (0 A = no current available)
 
-Register 0x82 and 0x83 are written by the Master to tell the Slave that it recognised a state change request.<br>
+Register 0x82 and 0x83 are written by the Master to tell the Node that it recognised a state change request.<br>
 If ok, the value of the register contains the initial chargecurrent (usually 6.0 A)<br>
 Use function code 0x06 (Preset Single Register) to write to these registers.<br>
 
@@ -146,7 +146,7 @@ Register | Access | Description | Unit | Values
 Register | Access | Description | Unit | Values
 --- | --- | --- | --- | ---
 0x00C0 | R/W | Configuration | | 0:Socket / 1:Fixed Cable
-0x00C1 | R/W | Load Balance (Also address of the device ) | | 0:Disabled / 1:Master / 2-4:Slave
+0x00C1 | R/W | Load Balance (Also address of the device ) | | 0:Disabled / 1:Master / 2-4:Node
 0x00C2 | R/W | MIN Charge Current the EV will accept | A | 6 - 16
 0x00C3 | R/W | MAX Charge Current for this EVSE | A | 6 - 80
 0x00C4 | R/W | Cable lock | | 0:Disable / 1:Solenoid / 2:Motor
