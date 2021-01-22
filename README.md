@@ -174,13 +174,14 @@ Register | Access | Description | Unit | Values
 0x00E8 | R/W | Address of PV electric meter | | 10 - 247
 0x00E9 | R/W | Byte order of custom electric meter | | 0:LBF & LWF / 1:LBF &  HWF / 2:HBF & LWF / 3:HBF & HWF
 0x00EA | R/W | Register for Current (A) of custom electric meter | | 0 - 65530
-0x00EB | R/W | Divisor for Current (A) of custom electric meter | 10<sup>x</sup> | 0 - 7 / 8:double
+0x00EB | R/W | Divisor for Current (A) of custom electric meter | 10<sup>x</sup> | 0 - 7
 0x00EC | R/W | Register for Voltage (V) of custom electric meter | | 0 - 65530
-0x00ED | R/W | Divisor for Voltage (V) of custom electric meter | 10<sup>x</sup> | 0 - 7 / 8:double
+0x00ED | R/W | Divisor for Voltage (V) of custom electric meter | 10<sup>x</sup> | 0 - 7
 0x00EE | R/W | Register for Power (W) of custom electric meter | | 0 - 65534
-0x00EF | R/W | Divisor for Power (W) of custom electric meter | 10<sup>x</sup> | 0 - 7 / 8:double
+0x00EF | R/W | Divisor for Power (W) of custom electric meter | 10<sup>x</sup> | 0 - 7 /
 0x00F0 | R/W | Register for Energy (kWh) of custom electric meter | | 0 - 65534
-0x00F1 | R/W | Divisor for Energy (kWh) of custom electric meter | 10<sup>x</sup> | 0 - 7 / 8:double
+0x00F1 | R/W | Divisor for Energy (kWh) of custom electric meter | 10<sup>x</sup> | 0 - 7
 0x00F2 | R/W | Grid type to which the Sensorbox is connected | | 0:4Wire / 1:3Wire
+0x00F3 | R/W | Data type of custom electric meter | | 0:Integer / 1:Double
 
  * Number in brackets in section "Predefined electric meters"
