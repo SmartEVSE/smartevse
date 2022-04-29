@@ -75,6 +75,8 @@
 ;       Allow custom registers up to 65535 instead of 255
 ;       Added Connected state for display
 ;       Allow entry of maximum circuit current also in non-load balance mode
+;2.19   Fixed $SC command to update Balanced[0]
+;       Fixed GE command to use MaxCurrent
 ;
 ;   Build with MPLAB X v5.25 and XC8 compiler version 2.10
 ;
@@ -2108,7 +2110,7 @@ void HandleRapi(void) {
             case 'A': SendRapiReply("OK 1 0"); break;                           // Ammeter multiplier and offset
             case 'C': SendRapiReply("OK 6 %d", MaxCircuit); break;              // Minimum and maximum current
             case 'D': SendRapiReply("NK"); break;                               // Delay timer not supported
-            case 'E': SendRapiReply("OK %d %04x", Balanced[0]/10, 0x33D); break; // ECF_DIODE_CHK_DISABLED|ECF_VENT_REQ_DISABLED|ECF_GND_CHK_DISABLED|ECF_STUCK_RELAY_CHK_DISABLED|ECF_AUTO_SVC_LEVEL_DISABLED|ECF_MONO_LCD|ECF_GFI_TEST_DISABLED|ECF_L2
+            case 'E': SendRapiReply("OK %d %04x", MaxCurrent, 0x33D); break; // ECF_DIODE_CHK_DISABLED|ECF_VENT_REQ_DISABLED|ECF_GND_CHK_DISABLED|ECF_STUCK_RELAY_CHK_DISABLED|ECF_AUTO_SVC_LEVEL_DISABLED|ECF_MONO_LCD|ECF_GFI_TEST_DISABLED|ECF_L2
             case 'F': SendRapiReply("OK 0 0 0"); break;                         // Fault counters not supported (gfitripcnt nogndtripcnt stuckrelaytripcnt)
             case 'G': 
                 SendRapiReply("OK %d %.0f", 
@@ -2176,6 +2178,8 @@ void HandleRapi(void) {
                             MaxCurrent=MaxMains;
                         SendRapiReply("NK %d", MaxCurrent);
                     }
+                    CalcBalancedCurrent(0);
+                    
                     if (U2buffer[ISR2FLAG-4]!='V')
                         write_settings();
                 } else {
