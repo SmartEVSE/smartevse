@@ -77,6 +77,8 @@
 ;       Allow entry of maximum circuit current also in non-load balance mode
 ;2.19   Fixed $SC command to update Balanced[0]
 ;       Fixed GE command to use MaxCurrent
+;2.20   Fixed status reporting when Access_bit==0
+;2.21   Cleaned up debugging
 ;
 ;   Build with MPLAB X v5.25 and XC8 compiler version 2.10
 ;
@@ -842,7 +844,7 @@ void validate_settings(void) {
     // Disable PV reception if not configured
     if (MainsMeterMeasure == 0) PVMeter = 0;
     
-    STATE_PRINT("STATE validatesettings\r\n");
+    STATE_PRINT("STATE validatesettings");
 }
 
 void read_settings(void) {
@@ -964,6 +966,10 @@ unsigned char ReadPilot(void)                                                   
 {
     ADCON0bits.GO = 1;                                                          // start ADC conversion on the selected channel
     while (ADCON0bits.GO);                                                      // wait for conversion to finish (blocking)
+    
+    // Too much data
+    //SendRapiReply("SZ %d", ADRES);
+    
     if (ADRES > 980) return PILOT_12V;                                          // Pilot at 12V (min 11.0V)
     if ((ADRES > 860) && (ADRES < 915)) return PILOT_9V;                        // Pilot at 9V
     if ((ADRES > 720) && (ADRES < 800)) return PILOT_6V;                        // Pilot at 6V
@@ -1691,7 +1697,7 @@ unsigned char setItemValue(unsigned char nav, unsigned int val) {
                     Access_bit = val;
                     ret = 1;
                     if (val == 0) State = STATE_A;
-                    STATE_PRINT("STATE setItemValue\r\n");
+                    STATE_PRINT("STATE setItemValue");
                 }
                 break;
             default:
@@ -2057,11 +2063,13 @@ void SendRapiReply(const char* fmt, ...) {
 }
 
 unsigned char GetRapiState(void) {
-    if (Error!=NO_ERROR) {
+    if (Access_bit==0) {
+        return 0xFF;
+    } else if (Error!=NO_ERROR) {
         if (Error & TEMP_HIGH) return 10;
         if (Error & RCD_TRIPPED) return 6;
         if (Error & CT_NOCOMM) return 9;
-        return 0xFF;
+        return 5;
     } else if (State==STATE_A) {
         if (pilot==PILOT_6V || pilot==PILOT_9V)
             return 0xFE;
@@ -2113,8 +2121,8 @@ void HandleRapi(void) {
             case 'E': SendRapiReply("OK %d %04x", MaxCurrent, 0x33D); break; // ECF_DIODE_CHK_DISABLED|ECF_VENT_REQ_DISABLED|ECF_GND_CHK_DISABLED|ECF_STUCK_RELAY_CHK_DISABLED|ECF_AUTO_SVC_LEVEL_DISABLED|ECF_MONO_LCD|ECF_GFI_TEST_DISABLED|ECF_L2
             case 'F': SendRapiReply("OK 0 0 0"); break;                         // Fault counters not supported (gfitripcnt nogndtripcnt stuckrelaytripcnt)
             case 'G': 
-                SendRapiReply("OK %d %.0f", 
-                    (int)(EVMeter?(EVIrms[0]+EVIrms[1]+EVIrms[2])*100:(Balanced[0])*100), // total current
+                SendRapiReply("OK %u %.0f", 
+                    (unsigned int)(EVMeter?(EVIrms[0]+EVIrms[1]+EVIrms[2])*100:(Balanced[0])*100), // total current
                     (Vrms[0]>Vrms[1]?Vrms[0]:(Vrms[1]>Vrms[2]?Vrms[1]:Vrms[2]))*1000); // maximum voltage
                 break; 
             case 'H': SendRapiReply("OK %d", 0); break;                         // Charge limit in kWh
@@ -2144,20 +2152,21 @@ void HandleRapi(void) {
                 SendRapiReply("OK");   
                 Access_bit = 0;                                                 // Toggle Access bit on/off
                 State = STATE_A;                                                // Switch back to state A
-                STATE_PRINT("STATE HandleRapi\r\n");
+                STATE_PRINT("STATE HandleRapi");
                 break;                                                          
             }
             case 'E': {                                                         // Enable charging
                 SendRapiReply("OK");   
                 Access_bit = 1;                                                 // Toggle Access bit on/off
-                STATE_PRINT("STATE HandleRapi\r\n");
+                STATE_PRINT("STATE HandleRapi");
                 break;                                                          
             }
             case 'S': {                                                         // Enable charging
                 SendRapiReply("OK");   
+                Access_bit = 1;                                                 // Toggle Access bit on/off
                 State = STATE_A;                                                // Switch back to state A
                 ChargeDelay = CHARGEDELAY;                                      // Keep in State A for CHARGEDELAY seconds
-                STATE_PRINT("STATE HandleRapi\r\n");
+                STATE_PRINT("STATE HandleRapi");
                 break;                                                          
             }
             default:  SendRapiReply("NK"); break;                               // unknown function
@@ -2759,7 +2768,7 @@ void main(void) {
                                                                                 // Broadcast change of Charging mode (Solar/Smart) to slave EVSE's
                 if (LoadBl == 1) ModbusWriteSingleRequest(0x00, 0xA8, Mode);
                 leftbutton = 5;
-                STATE_PRINT("STATE left button\r\n");
+                STATE_PRINT("STATE left button");
         } else if (leftbutton && ButtonState == 0x7) leftbutton--;
         
                
@@ -2778,11 +2787,11 @@ void main(void) {
                                 State = STATE_A;                                // Switch back to state A
                             } else Access_bit = 1;
                             INFO_PRINT("access: %d ", Access_bit);
-                            STATE_PRINT("STATE switch\r\n");
+                            STATE_PRINT("STATE switch");
                             break;
                         case 2: // Access Switch
                             Access_bit = 1;
-                            STATE_PRINT("STATE switch\r\n");
+                            STATE_PRINT("STATE switch");
                             break;
                         case 3: // Smart-Solar Button or hold button for 1,5 second to STOP charging
                             if (RB2low == 0) {
@@ -2794,7 +2803,7 @@ void main(void) {
                                     State = STATE_A;
                                     if (!TestState) ChargeDelay = 15;           // Keep in State A for 15 seconds, so the Charge cable can be removed.
                                     RB2low = 2;    
-                                    STATE_PRINT("STATE switch\r\n");
+                                    STATE_PRINT("STATE switch");
                                 }
                             }
                             break;
@@ -2810,7 +2819,7 @@ void main(void) {
                             if (State == STATE_C) {                             // Menu option Access is set to Disabled
                                 State = STATE_A;
                                 if (!TestState) ChargeDelay = 15;               // Keep in State A for 15 seconds, so the Charge cable can be removed.
-                                STATE_PRINT("STATE switch\r\n");
+                                STATE_PRINT("STATE switch");
                             }
                             break;
                     }
@@ -2831,7 +2840,7 @@ void main(void) {
                         case 2: // Access Switch
                             Access_bit = 0;
                             State = STATE_A;
-                            STATE_PRINT("STATE switch\r\n");
+                            STATE_PRINT("STATE switch");
                             break;
                         case 3: // Smart-Solar Button
                             if (RB2low != 2) {
@@ -2845,7 +2854,7 @@ void main(void) {
                                 SolarTimerEnable = 0;                           // Also make sure the SolarTimer is disabled.
                                                                                 // Broadcast change of Charging mode (Solar/Smart) to slave EVSE's
                                 if (LoadBl == 1 && Mode) ModbusWriteSingleRequest(0x00, 0xA8, Mode);
-                                STATE_PRINT("STATE switch\r\n");
+                                STATE_PRINT("STATE switch");
                             }
                             RB2low = 0;
                             break;    
@@ -2869,7 +2878,7 @@ void main(void) {
                 State = STATE_A;
                 Error = RCD_TRIPPED;
                 LCDTimer = 0;                                                   // display the correct error message on the LCD
-                STATE_PRINT("STATE RCD tripped\r\n");
+                STATE_PRINT("STATE RCD tripped");
             }
         }
 
@@ -2901,7 +2910,7 @@ void main(void) {
                 NextState = 0;
                 if (!ResetKwh) ResetKwh = 1;                                    // when set, reset EV kWh meter on state B->C change.
 
-                STATE_PRINT("STATE pilot change\r\n");
+                // STATE_PRINT("STATE pilot is 12V");
             } else if ( (pilot == PILOT_9V || pilot == STATE_A_TO_C) 
                 && Error == NO_ERROR && ChargeDelay == 0 && Access_bit) {       // switch to State B ?
                                                                                 // Allow to switch to state C directly if STATE_A_TO_C is set to PILOT_6V (see EVSE.h)
@@ -2930,7 +2939,7 @@ void main(void) {
                             ActivationMode = 30;                                // Activation mode is triggered if state C is not entered in 30 seconds.
                             BacklightTimer = BACKLIGHT;                         // Backlight ON
                             BACKLIGHT_ON;
-                            STATE_PRINT("STATE A->B\r\n");
+                            STATE_PRINT("STATE A->B");
                         }
                    }
                 } else {
@@ -2938,14 +2947,17 @@ void main(void) {
                     count = 0;
                 }
             } else {
-                STATE_PRINT("STATE pilot change\r\n");
+              //  STATE_PRINT("No change\r\n");
                 NextState = 0;
             }
         }
 
         if (State == STATE_COMM_B)                                              // Wait for response from Master
         {
-            if (Timer > ACK_TIMEOUT) State = STATE_A;
+            if (Timer > ACK_TIMEOUT) {
+                State = STATE_A;
+              STATE_PRINT("STATE B->A due to timeout");
+            }
         }
 
         // ############### EVSE State B #################
@@ -2962,7 +2974,7 @@ void main(void) {
                     if (count++ > 25)                                           // repeat 25 times (changed in v2.05)
                     {
                         State = STATE_A;                                        // switch to STATE_A
-                        STATE_PRINT("STATE B->A\r\n");
+                        STATE_PRINT("STATE B->A due to pilot");
                         if (LoadBl > 1)                                         // Load Balancing : Slave 
                         {
                             State = STATE_COMM_A;                               // Tell Master we switched to State A
@@ -2972,6 +2984,7 @@ void main(void) {
                 } else {
                     NextState = STATE_A;
                     count = 0;
+                    STATE_PRINT("STATE B->A due to pilot");
                 }
             } else if (pilot == PILOT_6V) {
                 if ((NextState == STATE_C) && (DiodeCheck == 1)) {
@@ -3007,7 +3020,7 @@ void main(void) {
                                     {
                                         GLCD();                                 // immediately update LCD (20ms)
                                     }
-                                    STATE_PRINT("STATE B->C\r\n");
+                                    STATE_PRINT("STATE B->C due to pilot (diodecheck)");
                                 }
                                 else Error |= NOCURRENT;
                             }
@@ -3029,7 +3042,7 @@ void main(void) {
                 NextState = 0;                                                  // no State to switch to
             }
 
-            while (TMR2 < 242);                                                 // wait till TMR2 is in range >= 96% (should be low), otherwise we'll miss it (blocking) 
+            while (TMR2 < 242);                                                 // wait till STAT is in range >= 96% (should be low), otherwise we'll miss it (blocking) 
 
             diode = ReadPilot();
             if (diode == PILOT_DIODE) DiodeCheck = 1;                     // Diode found, OK
@@ -3040,13 +3053,13 @@ void main(void) {
             State = STATE_B;                                                    // Switch back to State B
             PORTCbits.RC2 = 1;                                                  // Control pilot static +12V
             ActivationMode = 255;                                               // Disable ActivationMode
-            STATE_PRINT("STATE ACTSTART\r\n");
+            STATE_PRINT("STATE ACTSTART");
         }
 
         if ((State == STATE_COMM_C) && (Timer > ACK_TIMEOUT)) {
             DiodeCheck = 0;
             State = STATE_B;                                                    // switch back to STATE_B
-            STATE_PRINT("No ack, STATE C->B\r\n");
+            STATE_PRINT("No ack, STATE C->B");
         }
 
         // ############### EVSE State C #################
@@ -3063,7 +3076,7 @@ void main(void) {
                     {
                         CONTACTOR_OFF;                                          // Contactor OFF
                         State = STATE_A;                                        // switch back to STATE_A
-                        STATE_PRINT("STATE C->A\r\n");
+                        STATE_PRINT("STATE C->A");
                         GLCD_init();                                            // Re-init LCD
                         if (LoadBl > 1)                                         // Load Balancing : Slave 
                         {
@@ -3083,7 +3096,7 @@ void main(void) {
                     {
                         CONTACTOR_OFF;                                          // Contactor OFF
                         State = STATE_B;                                        // switch back to STATE_B
-                        STATE_PRINT("STATE C->B\r\n");
+                        STATE_PRINT("STATE C->B");
                         GLCD_init();                                            // Re-init LCD (200ms delay)
                         DiodeCheck = 0;
 
@@ -3100,13 +3113,14 @@ void main(void) {
                 }
             } else {                                                            // PILOT_6V
                 NextState = 0;                                                  // no State to switch to	
+                count = 0;
             }
         } // end of State C code
         
         if ((State == STATE_COMM_CB) && (Timer > ACK_TIMEOUT)) {
             // Send command to Master
             ModbusWriteSingleRequest(LoadBl, 0x04, 0x00);
-            INFO_PRINT("04 sent to Master, charging stopped\r\n");
+            INFO_PRINT("04 sent to Master, charging stopped");
             Timer = 0;                                                          // Clear the Timer
         }
         
@@ -3170,7 +3184,7 @@ void main(void) {
             {
                 Error |= CT_NOCOMM;
                 State = STATE_A;                                                // switch back to state A
-                STATE_PRINT("Communication Error STATE ->A\r\n");
+                STATE_PRINT("Communication Error STATE ->A");
                 for (x = 0; x < 4; x++) BalancedState[x] = 0;                   // reset all states
             } else if (timeout) timeout--;
 
@@ -3178,7 +3192,7 @@ void main(void) {
             {
                 Error |= TEMP_HIGH;
                 State = STATE_A;                                                // ERROR, switch back to STATE_A
-                STATE_PRINT("Temperature too High STATE ->A\r\n");
+                STATE_PRINT("Temperature too High STATE ->A");
                 for (x = 0; x < 4; x++) BalancedState[x] = 0;                   // reset all states
             }
 
@@ -3193,7 +3207,7 @@ void main(void) {
                     Error |= LESS_6A;
                 }    
                 State = STATE_A;
-                STATE_PRINT("No current STATE ->A\r\n");
+                STATE_PRINT("No current STATE ->A");
                 ChargeDelay = CHARGEDELAY;                                      // Set Chargedelay 
             }
 
@@ -3439,7 +3453,7 @@ void main(void) {
                             if (Error) {                                        // Is there an actual Error? Maybe the error got cleared?
                                 State = STATE_A;                                // We received an error; switch to State A, and wait 60 seconds
                                 ChargeDelay = CHARGEDELAY;
-                                STATE_PRINT("Broadcast Error message received!\r\n");
+                                STATE_PRINT("Broadcast Error message received!");
                             } else DEBUG_PRINT("Broadcast Errors Cleared received!\r\n");
                             break;
                         default:
@@ -3452,7 +3466,7 @@ void main(void) {
                     switch (Modbus.Register) {
                         case 0x81:                                              // SLAVE: ACK State A
                             State = STATE_A;
-                            STATE_PRINT("81 ACK State A\r\n");
+                            STATE_PRINT("81 ACK State A");
                             break;
                         case 0x82:                                              // ACK received, followed by assigned charge current
                             if (Modbus.Value == 0)                              // If charge current is zero, No current is available.
@@ -3465,7 +3479,8 @@ void main(void) {
                                 ActivationMode = 30;                            // Activation mode is triggered if state C is not entered in 30 seconds.
                                 BacklightTimer = BACKLIGHT;                     // Backlight ON
                                 BACKLIGHT_ON;
-                                STATE_PRINT("82 ACK State A->B, charge current: %.1f A\r\n", (double)Modbus.Value/10);
+                                DEBUG_PRINT("82 ACK State A->B, charge current: %.1f A", (double)Modbus.Value/10);
+                                STATE_PRINT("STATE ?->B (0x82)");
                             }
                             break;
                         case 0x83:                                              // ACK received, state C followed by charge current
@@ -3486,12 +3501,12 @@ void main(void) {
                                     GLCD();                                     // immediately update LCD
                                 }
                                 DEBUG_PRINT("83 ACK State C charge current: %.1f A\r\n", (double)Modbus.Value/10);
-                                STATE_PRINT("STATE B->C\r\n");
+                                STATE_PRINT("STATE B->C (0x83)");
                             }
                             break;
                         case 0x84:                                              // Charging Stopped, State B
                             State = STATE_B;
-                            STATE_PRINT("84 ACK State C->B, charging stopped\r\n");
+                            STATE_PRINT("84 ACK State C->B, charging stopped");
                             break;
                         default:
                             break;

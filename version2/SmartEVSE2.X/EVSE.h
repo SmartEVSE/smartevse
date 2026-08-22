@@ -32,7 +32,7 @@
 #include "GLCD.h"
 
 
-#define VERSION "2.18"                                                          // SmartEVSE software version
+#define VERSION "2.21"                                                         // SmartEVSE software version
 #define RAPI_VERSION "4.0.1"                                                    // Supported OpenEVSE RAPI version
 #define RAPI_TIMEOUT 10                                                         // RAPI timeout (in s) only provide async updates if last command within this time
 //#define DEBUG_P                                                               // Debug print enable/disable
@@ -206,6 +206,7 @@ extern unsigned char prevRapiState;
         if (RAPITimer==0) \
             printf(x); \
         else { \
+            SendRapiReply("SZ %s",x); \
             unsigned char rapiState = GetRapiState(); \
             if (prevRapiState != rapiState) { \
                 SendRapiReply("ST %02x", rapiState); \
