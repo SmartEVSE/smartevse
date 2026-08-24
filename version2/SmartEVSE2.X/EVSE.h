@@ -32,7 +32,7 @@
 #include "GLCD.h"
 
 
-#define VERSION "2.21"                                                         // SmartEVSE software version
+#define VERSION "2.23"                                                          // SmartEVSE software version
 #define RAPI_VERSION "4.0.1"                                                    // Supported OpenEVSE RAPI version
 #define RAPI_TIMEOUT 10                                                         // RAPI timeout (in s) only provide async updates if last command within this time
 //#define DEBUG_P                                                               // Debug print enable/disable
@@ -196,6 +196,18 @@
 #else
 #define INFO_PRINT(x) {if (RAPITimer==0) printf(x);}
 #endif 
+
+
+#define RAPI_DISABLED_CONNECTED 253
+#define RAPI_DISABLED_DISCONNECTED 255
+#define RAPI_SLEEPING 254
+#define RAPI_NOT_CONNECTED 1
+#define RAPI_CONNECTED 2
+#define RAPI_CHARGING 3
+#define RAPI_ERROR_DIODE 5
+#define RAPI_ERROR_GFCI 6
+#define RAPI_ERROR_SELF_TEST 9
+#define RAPI_ERROR_TEMPERATURE 10
 
 void SendRapiReply(const char* fmt, ...);
 unsigned char GetRapiState(void);

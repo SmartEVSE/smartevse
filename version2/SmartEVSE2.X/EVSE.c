@@ -79,6 +79,8 @@
 ;       Fixed GE command to use MaxCurrent
 ;2.20   Fixed status reporting when Access_bit==0
 ;2.21   Cleaned up debugging
+;2.22   Added separate disabled_connected and disable_disconnected reporting and use defines for codes
+;2.23   Prevent enabling access once used via RAPI
 ;
 ;   Build with MPLAB X v5.25 and XC8 compiler version 2.10
 ;
@@ -255,7 +257,7 @@ signed double EnergyEV = 0;                                                     
 signed double EVIrms[3]={0, 0, 0};                                              // Momentary current per Phase for EV (Amps *10) (23 = 2.3A)
 
 unsigned char RAPITimer = 0;                                                    // LED on I01 uses TMR2 and a PWM signal to fade in/out
-
+unsigned char RAPIDisabled = 0;
 
 struct  {
     unsigned char Address;
@@ -836,7 +838,8 @@ void validate_settings(void) {
     }
 
     // Enable access if no access switch used
-    if (Switch != 1 && Switch != 2) Access_bit = 1;
+    if (Switch != 1 && Switch != 2 && !RAPIDisabled) Access_bit = 1;
+    
     // Sensorbox v2 has always address 0x0A
     if (MainsMeter == EM_SENSORBOX) MainsMeterAddress = 0x0A;
     // Disable modbus reception on normal mode
@@ -2063,17 +2066,21 @@ void SendRapiReply(const char* fmt, ...) {
 }
 
 unsigned char GetRapiState(void) {
+    if (Error!=NO_ERROR) {
+        if (Error & TEMP_HIGH) return RAPI_ERROR_TEMPERATURE;
+        if (Error & RCD_TRIPPED) return RAPI_ERROR_GFCI;
+        if (Error & CT_NOCOMM) return RAPI_ERROR_SELF_TEST;
+        return RAPI_ERROR_DIODE;
+    } 
     if (Access_bit==0) {
-        return 0xFF;
-    } else if (Error!=NO_ERROR) {
-        if (Error & TEMP_HIGH) return 10;
-        if (Error & RCD_TRIPPED) return 6;
-        if (Error & CT_NOCOMM) return 9;
-        return 5;
+        if (pilot==PILOT_6V || pilot==PILOT_9V)
+            return RAPI_DISABLED_CONNECTED;
+        else
+            return RAPI_DISABLED_DISCONNECTED;
     } else if (State==STATE_A) {
         if (pilot==PILOT_6V || pilot==PILOT_9V)
-            return 0xFE;
-        else return STATE_A;
+            return RAPI_SLEEPING;
+        else return RAPI_NOT_CONNECTED;
     } else {
         return State;
     }
@@ -2152,6 +2159,7 @@ void HandleRapi(void) {
                 SendRapiReply("OK");   
                 Access_bit = 0;                                                 // Toggle Access bit on/off
                 State = STATE_A;                                                // Switch back to state A
+                RAPIDisabled = 1;                                               // If disabled once via API then do not enable via validate_settings
                 STATE_PRINT("STATE HandleRapi");
                 break;                                                          
             }
